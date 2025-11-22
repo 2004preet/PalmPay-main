@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+palm_pay.db
+
+# Model files (large files - optionally exclude)
+# Uncomment if you don't want to upload trained models
+# palm_feature_extractor.h5
+# *.h5
+
+# Logs
+*.log
+app.log
+training_live.log
+app_output.log
+app_terminal.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment variables
+.env
+.env.local
+
+# Temporary files
+*.tmp
+*.temp
+__temp__/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Training output (optional - comment out if you want to keep)
+# training_output.log
+
+# Node modules (if any)
+node_modules/
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+
+# pytest
+.pytest_cache/
+
