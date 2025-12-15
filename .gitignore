@@ -13,12 +13,15 @@ venv/
 env/
 ENV/
 .venv
+venv*/
+venv2/
 
 # Database
 *.db
 *.sqlite
 *.sqlite3
 palm_pay.db
+palm_pay.db.enc
 
 # Model files (large files - optionally exclude)
 # Uncomment if you don't want to upload trained models
@@ -69,4 +72,7 @@ htmlcov/
 
 # pytest
 .pytest_cache/
+
+.db_key
+models/
 
