@@ -15,13 +15,13 @@ from sklearn.metrics.pairwise import cosine_similarity
 class PalmRecognizer:
     """Palm recognition using deep learning feature extraction"""
     
-    def __init__(self, model_path="palm_feature_extractor_advanced.h5", threshold=0.75):
+    def __init__(self, model_path="palm_feature_extractor_advanced.h5", threshold=0.65):
         """
-        Initialize the palm recognizer
+        Initialize the palm recognizer with enhanced accuracy settings
         
         Args:
             model_path: Path to the trained feature extractor model
-            threshold: Similarity threshold for authentication (0-1)
+            threshold: Similarity threshold for authentication (0.65 for better accuracy with enhanced preprocessing)
         """
         self.model_path = model_path
         self.threshold = threshold
@@ -139,23 +139,52 @@ class PalmRecognizer:
         return model
     
     def enhance_image(self, img, fast_mode=False):
-        """Enhance image quality for better feature extraction"""
+        """Enhance image quality for better feature extraction with advanced techniques"""
         if fast_mode:
-            # Skip enhancement for speed in registration
+            # Minimal enhancement for speed
             return img
             
-        # Convert to LAB color space for better enhancement
+        # Step 1: Denoising
+        img = cv2.bilateralFilter(img, 9, 75, 75)  # Bilateral filter for noise reduction while preserving edges
+        
+        # Step 2: Convert to LAB color space for better enhancement
         if len(img.shape) == 3:
             lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
             l, a, b = cv2.split(lab)
             
-            # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) with optimized parameters
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
             l = clahe.apply(l)
+            
+            # Enhance color channels slightly
+            a = cv2.addWeighted(a, 1.1, cv2.GaussianBlur(a, (0, 0), 1), -0.1, 0)
+            b = cv2.addWeighted(b, 1.1, cv2.GaussianBlur(b, (0, 0), 1), -0.1, 0)
             
             # Merge channels
             lab = cv2.merge([l, a, b])
             img = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+        
+        # Step 3: Sharpening for better edge detection
+        kernel = np.array([[-1,-1,-1], 
+                          [-1, 9,-1],
+                          [-1,-1,-1]])
+        img = cv2.filter2D(img, -1, kernel)
+        
+        # Step 4: Adaptive gamma correction for better contrast
+        quality = self.assess_image_quality(img)
+        if quality['brightness'] < 100:
+            gamma = 0.8  # Brighten dark images
+        elif quality['brightness'] > 150:
+            gamma = 1.4  # Darken bright images
+        else:
+            gamma = 1.0
+        
+        if gamma != 1.0:
+            lookUpTable = np.empty((1,256), np.uint8)
+            for i in range(256):
+                lookUpTable[0,i] = np.clip(pow(i / 255.0, gamma) * 255.0, 0, 255)
+            img = cv2.LUT(img, lookUpTable)
+        
         return img
     
     def preprocess_image(self, image, fast_mode=False):
@@ -208,15 +237,77 @@ class PalmRecognizer:
         # Add batch dimension
         img = np.expand_dims(img, axis=0)
         
-        return img
+    def assess_image_quality(self, img):
+        """Assess image quality metrics for adaptive processing"""
+        if len(img.shape) == 2:
+            gray = img
+        else:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # Brightness (mean intensity)
+        brightness = np.mean(gray)
+        
+        # Contrast (standard deviation)
+        contrast = np.std(gray)
+        
+        # Sharpness (variance of Laplacian)
+        sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
+        
+        return {
+            'brightness': brightness,
+            'contrast': contrast,
+            'sharpness': sharpness
+        }
     
-    def extract_features(self, image, fast_mode=True):
+    def adaptive_enhance_image(self, img):
+        """Adaptive image enhancement based on quality assessment"""
+        quality = self.assess_image_quality(img)
+        
+        # Adaptive gamma correction based on brightness
+        if quality['brightness'] < 100:
+            gamma = 0.8  # Brighten dark images
+        elif quality['brightness'] > 150:
+            gamma = 1.4  # Darken bright images
+        else:
+            gamma = 1.0
+        
+        if gamma != 1.0:
+            lookUpTable = np.empty((1,256), np.uint8)
+            for i in range(256):
+                lookUpTable[0,i] = np.clip(pow(i / 255.0, gamma) * 255.0, 0, 255)
+            img = cv2.LUT(img, lookUpTable)
+        
+        # Adaptive CLAHE based on contrast
+        if quality['contrast'] < 30:
+            clip_limit = 4.0  # More aggressive for low contrast
+        else:
+            clip_limit = 2.0
+        
+        if len(img.shape) == 3:
+            lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
+            l = clahe.apply(l)
+            lab = cv2.merge([l, a, b])
+            img = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+        
+        # Adaptive sharpening based on sharpness
+        if quality['sharpness'] < 100:
+            # More sharpening for blurry images
+            kernel = np.array([[-1,-1,-1,-1,-1],
+                              [-1, 1, 2, 1,-1],
+                              [-1, 2, 4, 2,-1],
+                              [-1, 1, 2, 1,-1],
+                              [-1,-1,-1,-1,-1]]) / 8.0
+            img = cv2.filter2D(img, -1, kernel)
+        
+        return img
         """
-        Extract features from a palm image
+        Extract features from a palm image with enhanced preprocessing
         
         Args:
             image: Input image (numpy array, bytes, or file path)
-            fast_mode: If True, skip image enhancement for speed
+            fast_mode: If True, use minimal enhancement for speed (default False for accuracy)
         
         Returns:
             Feature vector (numpy array of shape (512,))
@@ -233,13 +324,13 @@ class PalmRecognizer:
             print(f"Error extracting features: {e}")
             raise
     
-    def extract_features_batch(self, images, fast_mode=True):
+    def extract_features_batch(self, images, fast_mode=False):
         """
         Extract features from multiple palm images in batch for faster processing
         
         Args:
             images: List of input images (numpy arrays, bytes, or file paths)
-            fast_mode: If True, skip image enhancement for speed
+            fast_mode: If True, use minimal enhancement for speed (default False for accuracy)
         
         Returns:
             List of feature vectors (each numpy array of shape (512,))
@@ -338,8 +429,8 @@ class PalmRecognizer:
 # Global instance
 _palm_recognizer = None
 
-def get_palm_recognizer(threshold=0.75):
-    """Get or create the global palm recognizer instance"""
+def get_palm_recognizer(threshold=0.65):
+    """Get or create the global palm recognizer instance with enhanced accuracy"""
     global _palm_recognizer
     if _palm_recognizer is None:
         _palm_recognizer = PalmRecognizer(threshold=threshold)

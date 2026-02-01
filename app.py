@@ -418,10 +418,8 @@ def register():
 
     # Extract palm features from all images and average them
     try:
-        feature_list = []
-        for img in hand_images:
-            features = palm_recognizer.extract_features(img)
-            feature_list.append(features)
+        # Use batch extraction for efficiency
+        feature_list = palm_recognizer.extract_features_batch(hand_images, fast_mode=False)
         
         # Average the features for more robust representation
         palm_features = np.mean(feature_list, axis=0)
