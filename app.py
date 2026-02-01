@@ -313,6 +313,31 @@ def capture_palm_image():
     
     return hand_image
 
+def capture_multiple_palm_images(num_captures=3):
+    """Capture multiple palm images for better feature extraction"""
+    images = []
+    print(f"Capturing {num_captures} palm images for registration...")
+    
+    for i in range(num_captures):
+        print(f"\n--- Capture {i+1}/{num_captures} ---")
+        print("Please position your palm and hold steady...")
+        image = capture_palm_image()
+        if image is not None:
+            images.append(image)
+            print(f"✅ Capture {i+1} successful")
+            if i < num_captures - 1:
+                print("Please adjust your palm position slightly for the next capture...")
+                time.sleep(1)  # Brief pause between captures
+        else:
+            print(f"❌ Capture {i+1} failed")
+    
+    if len(images) == 0:
+        return None
+    elif len(images) < num_captures:
+        print(f"Warning: Only captured {len(images)} out of {num_captures} images")
+    
+    return images
+
 def verify_palm_authentication(account_number, new_palm_image):
     """Verify palm authentication for a user"""
     user = get_user(account_number)
@@ -379,11 +404,11 @@ def register():
     if errors:
         return render_template("register.html", message=" ".join(errors))
 
-    # Use the capture_palm_image function for consistency
-    hand_image = capture_palm_image()
+    # Capture multiple palm images for better accuracy
+    hand_images = capture_multiple_palm_images(num_captures=3)
 
-    if hand_image is None:
-        error_msg = "Hand image not captured. "
+    if hand_images is None or len(hand_images) == 0:
+        error_msg = "Hand images not captured. "
         error_msg += "Possible issues: "
         error_msg += "1) Camera permissions not granted (System Preferences → Security & Privacy → Camera), "
         error_msg += "2) Camera is being used by another app, "
@@ -391,10 +416,22 @@ def register():
         error_msg += "Please check your camera settings and try again."
         return render_template("register.html", message=error_msg)
 
-    # Extract palm features for future authentication
+    # Extract palm features from all images and average them
     try:
-        palm_features = palm_recognizer.extract_features(hand_image)
+        feature_list = []
+        for img in hand_images:
+            features = palm_recognizer.extract_features(img)
+            feature_list.append(features)
+        
+        # Average the features for more robust representation
+        palm_features = np.mean(feature_list, axis=0)
+        # Re-normalize after averaging
+        palm_features = palm_features / np.linalg.norm(palm_features)
         palm_features_bytes = palm_features.tobytes()
+        
+        # Store the first image as representative
+        hand_image = hand_images[0]
+        
     except Exception as e:
         return render_template("register.html", message=f"Error extracting palm features: {str(e)}")
 
@@ -428,9 +465,9 @@ def register():
                 thread = threading.Thread(target=retrain_model_background)
                 thread.daemon = True
                 thread.start()
-                success_message = "Registration successful! Palm features extracted and stored. Model is being automatically retrained in the background for improved accuracy."
+                success_message = f"Registration successful! {len(hand_images)} palm images captured and features averaged for enhanced accuracy. Model is being automatically retrained in the background."
             else:
-                success_message = "Registration successful! Palm features extracted and stored."
+                success_message = f"Registration successful! {len(hand_images)} palm images captured and features averaged for enhanced accuracy."
         else:
             success_message = "Registration successful! Palm features extracted and stored."
         

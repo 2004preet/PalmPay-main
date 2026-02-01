@@ -44,22 +44,23 @@ The app will start at: **http://localhost:5000**
    PIN: 1234
    ```
 
-#### Step 3.2: Capture Palm Image
+#### Step 3.2: Capture Palm Images (Multiple for Accuracy)
 1. Click **"Register"** button
 2. **Camera window opens automatically**
-3. **Position your palm** in front of the camera:
-   - Keep palm flat
-   - Ensure good lighting
-   - Keep palm still
-   - Make sure palm is clearly visible
-4. **Press 's' key** on keyboard to save/capture
+3. **Multiple captures** will be taken for enhanced accuracy:
+   - **Capture 1/3**: Position your palm in front of the camera
+   - Keep palm flat, ensure good lighting, keep palm still
+   - Press 's' key or wait for automatic capture
+   - **Capture 2/3**: Slightly adjust palm position
+   - **Capture 3/3**: Adjust again for comprehensive coverage
+4. **Press 's' key** on keyboard to save each capture
 5. **Press 'q' key** to cancel (if needed)
-6. Camera window closes automatically
-7. Palm features are extracted and stored
+6. Camera window closes automatically after all captures
+7. Palm features are extracted from all images and averaged for robust authentication
 
 #### Step 3.3: Registration Complete
-- You'll see: "Registration successful! Palm features extracted and stored."
-- Your palm is now registered in the system
+- You'll see: "Registration successful! 3 palm images captured and features averaged for enhanced accuracy."
+- Your palm is now registered in the system with improved recognition
 - You can now perform transactions
 
 ### 4. Deposit Money (Verify Palm)
