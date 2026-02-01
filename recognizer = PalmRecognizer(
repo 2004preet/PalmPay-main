@@ -1,0 +1,4 @@
+recognizer = PalmRecognizer(
+    model_path="palm_feature_extractor_advanced.h5", 
+    threshold=0.85
+)

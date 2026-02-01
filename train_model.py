@@ -136,12 +136,12 @@ def create_contrastive_model():
         print("   Using EfficientNetB0 as base model")
     else:
         # Fall back to MobileNetV2 if EfficientNet is not available
-    base_model = MobileNetV2(
-        weights='imagenet',
-        include_top=False,
-        input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3),
+        base_model = MobileNetV2(
+            weights='imagenet',
+            include_top=False,
+            input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3),
             pooling='avg'
-    )
+        )
         print("   Using MobileNetV2 as base model")
     
     # Freeze base model initially
@@ -166,6 +166,7 @@ def create_contrastive_model():
     # Normalize features for cosine similarity
     normalized_features = layers.Lambda(
         lambda x: tf.nn.l2_normalize(x, axis=1), 
+        output_shape=(FEATURE_DIM,),
         name='normalized_features'
     )(features)
     
@@ -245,7 +246,7 @@ def train_with_contrastive_learning():
     
     valid_images = []
     if os.path.exists(VALID_DIR):
-    valid_images = load_images_from_directory(VALID_DIR)
+        valid_images = load_images_from_directory(VALID_DIR)
         print(f"   Loaded {len(valid_images)} validation images")
     
     if len(train_images) == 0:
@@ -254,7 +255,7 @@ def train_with_contrastive_learning():
     # Normalize images
     train_images = train_images.astype('float32') / 255.0
     if len(valid_images) > 0:
-    valid_images = valid_images.astype('float32') / 255.0
+        valid_images = valid_images.astype('float32') / 255.0
     
     # Create model
     print("\n2. Creating feature extractor model...")
