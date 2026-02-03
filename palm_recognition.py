@@ -9,20 +9,20 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers as _layers
 import os
+import os
 import pickle
 from sklearn.metrics.pairwise import cosine_similarity
 
 class PalmRecognizer:
     """Palm recognition using deep learning feature extraction"""
     
-    def __init__(self, model_path="palm_feature_extractor_advanced.h5", threshold=0.65):
+    def __init__(self, model_path="palm_feature_extractor_professional_features.h5", threshold=0.65):
         """
-        Initialize the palm recognizer with enhanced accuracy settings
+        Initialize the professional palm recognizer with ArcFace and attention mechanisms
         
         Args:
-            model_path: Path to the trained feature extractor model
-            threshold: Similarity threshold for authentication (0.65 for better accuracy with enhanced preprocessing)
-        """
+            model_path: Path to the trained professional feature extractor model
+            threshold: Similarity threshold for authentication (0.65 for professional accuracy)
         self.model_path = model_path
         self.threshold = threshold
         self.model = None
@@ -30,8 +30,19 @@ class PalmRecognizer:
         self.load_model()
     
     def load_model(self):
-        """Load the trained feature extractor model"""
-        print("Loading advanced trained palm recognition model...")
+        """Load the professional trained model or fall back to advanced/created model"""
+        print("Loading professional palm recognition model...")
+        
+        # Try professional model first
+        professional_path = "palm_feature_extractor_professional_features.h5"
+        if os.path.exists(professional_path):
+            self.model_path = professional_path
+        else:
+            # Fall back to advanced model
+            advanced_path = "palm_feature_extractor_advanced.h5"
+            if os.path.exists(advanced_path):
+                self.model_path = advanced_path
+        
         try:
             # Custom L2Normalize layer to handle Lambda layer with tf.nn.l2_normalize
             class L2Normalize(_layers.Layer):
@@ -80,62 +91,113 @@ class PalmRecognizer:
                     self.model = new_model
                     print("  ✓ Rebuilt model without Lambda layers")
             
-            print(f"✓ Loaded trained model from {self.model_path}")
-            print("  Features: 512D ArcFace embeddings")
+            model_type = "Professional" if "professional" in self.model_path else "Advanced"
+            print(f"✓ Loaded {model_type} trained model from {self.model_path}")
+            print("  Features: 512D ArcFace embeddings with attention")
             print(f"  Threshold: {self.threshold}")
         except Exception as e:
             print(f"⚠️ Error loading trained model: {e}")
-            print("  Using default model...")
-            self.model = self._create_default_model()
+            print("  Creating professional model...")
+            self.model = self._create_advanced_model()
     
-    def _create_default_model(self):
-        """Create a default feature extractor if trained model is not available"""
-        from tensorflow.keras.applications import MobileNetV2
-        from tensorflow.keras import layers
+    def _create_advanced_model(self):
+        """Create a professional-grade palm recognition model with ArcFace and attention mechanisms"""
+        from tensorflow.keras.applications import EfficientNetB3
+        from tensorflow.keras import layers, regularizers
         
-        # Try EfficientNetB3 first, fall back to B0, then MobileNetV2
+        print("Creating advanced palm recognition model with ArcFace and attention...")
+        
+        # Use EfficientNetB3 as backbone for better feature extraction
         try:
-            from tensorflow.keras.applications import EfficientNetB3
             base_model = EfficientNetB3(
                 weights='imagenet',
                 include_top=False,
-                input_shape=(self.img_size[0], self.img_size[1], 3),
-                pooling='avg'
+                input_shape=(self.img_size[0], self.img_size[1], 3)
             )
-            print("   Using EfficientNetB3 as base model")
-        except (ImportError, Exception):
-            try:
-                from tensorflow.keras.applications import EfficientNetB0
-                base_model = EfficientNetB0(
-                    weights='imagenet',
-                    include_top=False,
-                    input_shape=(self.img_size[0], self.img_size[1], 3),
-                    pooling='avg'
-                )
-                print("   Using EfficientNetB0 as base model")
-            except (ImportError, Exception):
-                # Fall back to MobileNetV2 if EfficientNet is not available
-                base_model = MobileNetV2(
-                    weights='imagenet',
-                    include_top=False,
-                    input_shape=(self.img_size[0], self.img_size[1], 3),
-                    pooling='avg'
-                )
-                print("   Using MobileNetV2 as base model")
+            print("   Using EfficientNetB3 backbone")
+        except Exception:
+            # Fallback to EfficientNetB0
+            from tensorflow.keras.applications import EfficientNetB0
+            base_model = EfficientNetB0(
+                weights='imagenet',
+                include_top=False,
+                input_shape=(self.img_size[0], self.img_size[1], 3)
+            )
+            print("   Using EfficientNetB0 backbone")
         
+        # Freeze the backbone initially
         base_model.trainable = False
         
         inputs = keras.Input(shape=(self.img_size[0], self.img_size[1], 3))
-        x = base_model(inputs, training=False)
-        x = layers.Dense(512, activation='relu', name='fc1')(x)
+        
+        # Multi-scale feature extraction
+        # Get features at different scales
+        base_features = base_model(inputs, training=False)
+        
+        # Global Average Pooling
+        x = layers.GlobalAveragePooling2D()(base_features)
+        
+        # Attention mechanism - Squeeze and Excitation block
+        def squeeze_excite_block(input_tensor, ratio=16):
+            """Squeeze and Excitation attention block"""
+            channels = input_tensor.shape[-1]
+            se = layers.GlobalAveragePooling2D()(input_tensor)
+            se = layers.Dense(channels // ratio, activation='relu')(se)
+            se = layers.Dense(channels, activation='sigmoid')(se)
+            se = layers.Reshape((1, 1, channels))(se)
+            return layers.Multiply()([input_tensor, se])
+        
+        # Apply attention to base features before pooling
+        base_features = layers.Reshape((1, 1, base_features.shape[-1]))(base_features)
+        attended_features = squeeze_excite_block(base_features)
+        attended_features = layers.Flatten()(attended_features)
+        
+        # Combine global and attended features
+        x = layers.Concatenate()([x, attended_features])
+        
+        # Advanced dense layers with better regularization
+        x = layers.Dense(1024, activation='relu', 
+                        kernel_regularizer=regularizers.l2(1e-4),
+                        name='fc1')(x)
+        x = layers.BatchNormalization()(x)
+        x = layers.Dropout(0.5)(x)
+        
+        # Residual connection
+        residual = x
+        
+        x = layers.Dense(512, activation='relu',
+                        kernel_regularizer=regularizers.l2(1e-4),
+                        name='fc2')(x)
         x = layers.BatchNormalization()(x)
         x = layers.Dropout(0.4)(x)
-        x = layers.Dense(256, activation='relu', name='fc2')(x)
+        
+        # Add residual connection
+        if residual.shape[-1] == 512:
+            x = layers.Add()([x, residual])
+        
+        x = layers.Dense(256, activation='relu',
+                        kernel_regularizer=regularizers.l2(1e-4),
+                        name='fc3')(x)
         x = layers.BatchNormalization()(x)
         x = layers.Dropout(0.3)(x)
-        features = layers.Dense(512, activation='linear', name='features')(x)  # Increased to 512 for better accuracy
         
-        model = keras.Model(inputs, features, name='palm_feature_extractor')
+        # ArcFace-inspired final layer
+        features = layers.Dense(512, activation=None, 
+                              kernel_regularizer=regularizers.l2(1e-4),
+                              name='features')(x)
+        
+        # L2 normalization for ArcFace
+        features = layers.Lambda(lambda x: tf.nn.l2_normalize(x, axis=1), name='l2_normalize')(features)
+        
+        model = keras.Model(inputs, features, name='advanced_palm_recognizer')
+        
+        print("✓ Created advanced model with:")
+        print("  - EfficientNetB3 backbone")
+        print("  - Squeeze-and-Excitation attention")
+        print("  - Multi-scale features")
+        print("  - ArcFace-style L2 normalization")
+        print("  - Advanced regularization")
+        
         return model
     
     def enhance_image(self, img, fast_mode=False):

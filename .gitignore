@@ -22,8 +22,8 @@ palm_pay.db
 
 # Model files (large files - optionally exclude)
 # Uncomment if you don't want to upload trained models
-# palm_feature_extractor.h5
-# *.h5
+palm_feature_extractor.h5
+*.h5
 
 # Logs
 *.log
