@@ -1,62 +1,105 @@
 {% extends 'base.html' %}
 {% block content %}
-<div class="max-w-xl mx-auto">
-  <!-- Header Section -->
-  <div class="text-center mb-8">
-    <div class="w-20 h-20 bg-gradient-to-r from-emerald-400 to-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
-      <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-      </svg>
-    </div>
-    <h2 class="text-3xl font-bold mb-2 bg-gradient-to-r from-emerald-400 to-green-500 bg-clip-text text-transparent">Deposit Funds</h2>
-    <p class="text-gray-400">Add money to your account securely</p>
-  </div>
-
-  <!-- Deposit Form -->
-  <div class="bg-gradient-to-br from-white/10 to-white/5 rounded-3xl p-8 border border-white/20 shadow-2xl backdrop-blur-sm">
+<div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+  <div class="w-full max-w-md">
+    
+    <!-- Alert Section -->
     {% if message %}
-      <div class="mb-6 rounded-2xl bg-gradient-to-r from-emerald-400/20 to-green-500/20 border border-emerald-400/30 text-emerald-100 px-6 py-4 font-medium flex items-center">
-        <svg class="w-5 h-5 mr-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-        </svg>
-        {{ message }}
+      <div class="mb-6 rounded-2xl backdrop-blur-sm border animate-slide-down" {% if 'successful' in message or '✅' in message %}
+           style="background: rgba(34, 197, 94, 0.15); border-color: rgba(34, 197, 94, 0.3); color: #86efac;"
+        {% elif '❌' in message %}
+           style="background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5;"
+        {% else %}
+           style="background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.3); color: #93c5fd;"
+        {% endif %}>
+        <div class="px-6 py-4 flex items-start space-x-3">
+          <svg class="w-6 h-6 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {% if 'successful' in message or '✅' in message %}
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            {% elif '❌' in message %}
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            {% else %}
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            {% endif %}
+          </svg>
+          <span class="text-sm font-medium">{{ message }}</span>
+        </div>
       </div>
     {% endif %}
 
-    <form method="POST" class="space-y-6">
-      <div class="space-y-4">
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-300">Account Number</label>
-          <input class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400/50 transition-all duration-200" 
-                 name="account_number" placeholder="Enter your account number" required>
-        </div>
-        
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-300">4-Digit PIN</label>
-          <input class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400/50 transition-all duration-200" 
-                 type="password" name="pin" placeholder="Enter your 4-digit PIN" maxlength="4" pattern="[0-9]{4}" required>
-        </div>
-
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-300">Deposit Amount (₹)</label>
-          <div class="relative">
-            <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-medium">₹</span>
-            <input class="w-full pl-10 pr-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400/50 transition-all duration-200" 
-                   type="number" step="0.01" name="amount" placeholder="0.00" min="0" required>
+    <!-- Main Card -->
+    <div class="card-hover bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-3xl backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
+      
+      <!-- Header -->
+      <div class="bg-gradient-to-r from-emerald-500 to-green-500 p-8">
+        <div class="flex items-center justify-between">
+          <div class="flex-1">
+            <h1 class="text-3xl font-bold text-white flex items-center">
+              <svg class="w-8 h-8 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+              </svg>
+              Deposit Funds
+            </h1>
+            <p class="text-white/80 text-sm mt-1">Add money to your account</p>
           </div>
-          <p class="text-xs text-gray-400">Minimum deposit: ₹1.00</p>
         </div>
       </div>
 
-      <div class="pt-4">
-        <button class="w-full bg-gradient-to-r from-emerald-400 to-green-500 hover:from-emerald-500 hover:to-green-600 text-white font-bold py-4 rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-emerald-500/25 flex items-center justify-center space-x-2">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-          </svg>
-          <span>Deposit Funds</span>
-        </button>
+      <!-- Form -->
+      <div class="p-8 space-y-6">
+        <form method="POST" class="space-y-6">
+          
+          <div class="space-y-2">
+            <label class="block text-sm font-semibold text-gray-200">Account Number *</label>
+            <input type="text" name="account_number" placeholder="ACC123456789" required
+                   class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500/50 focus:bg-white/10 transition-all duration-200">
+          </div>
+
+          <div class="space-y-2">
+            <label class="block text-sm font-semibold text-gray-200">Security PIN (4 digits) *</label>
+            <input type="password" name="pin" placeholder="••••" maxlength="4" pattern="[0-9]{4}" required
+                   class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500/50 focus:bg-white/10 transition-all duration-200">
+          </div>
+
+          <div class="space-y-2">
+            <label class="block text-sm font-semibold text-gray-200">Amount to Deposit (₹) *</label>
+            <div class="relative">
+              <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-semibold">₹</span>
+              <input type="number" step="0.01" name="amount" placeholder="1000.00" min="0.01" required
+                     class="w-full pl-8 pr-4 py-3 rounded-xl bg-white/5 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500/50 focus:bg-white/10 transition-all duration-200">
+            </div>
+            <p class="text-xs text-gray-400">Minimum deposit: ₹1.00</p>
+          </div>
+
+          <button type="submit" class="w-full bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-white font-bold py-4 px-6 rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-emerald-500/25 flex items-center justify-center space-x-2 group">
+            <svg class="w-5 h-5 group-hover:animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+            </svg>
+            <span>Proceed with Deposit</span>
+          </button>
+        </form>
       </div>
-    </form>
+
+      <!-- Info Footer -->
+      <div class="bg-gradient-to-r from-blue-500/10 to-emerald-500/10 border-t border-white/10 px-8 py-4">
+        <div class="flex items-start space-x-2">
+          <svg class="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+          </svg>
+          <p class="text-xs text-gray-300">After entering your details, you'll need to authenticate with your palm biometrics for security.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Back Link -->
+    <div class="mt-6 text-center">
+      <a href="{{ url_for('home') }}" class="text-gray-400 hover:text-white transition-colors flex items-center justify-center space-x-1">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+        </svg>
+        <span>Back to Home</span>
+      </a>
+    </div>
   </div>
 </div>
 {% endblock %}

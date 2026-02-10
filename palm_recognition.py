@@ -23,6 +23,7 @@ class PalmRecognizer:
         Args:
             model_path: Path to the trained professional feature extractor model
             threshold: Similarity threshold for authentication (0.65 for professional accuracy)
+        """
         self.model_path = model_path
         self.threshold = threshold
         self.model = None
@@ -258,7 +259,7 @@ class PalmRecognizer:
             fast_mode: If True, skip image enhancement for speed
         
         Returns:
-            Preprocessed image array
+            Preprocessed image array with batch dimension
         """
         # Handle different input types
         if isinstance(image, bytes):
@@ -298,6 +299,8 @@ class PalmRecognizer:
         
         # Add batch dimension
         img = np.expand_dims(img, axis=0)
+        
+        return img
         
     def assess_image_quality(self, img):
         """Assess image quality metrics for adaptive processing"""

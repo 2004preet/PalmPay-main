@@ -184,134 +184,150 @@ def get_user(acc):
     conn.close()
     return row
 
-def capture_palm_image():
-    """Capture palm image from camera - works in web server context"""
-    import time
+def assess_image_quality(frame):
+    """Assess image quality - check brightness, contrast, and blur"""
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     
+    # Check brightness (mean intensity)
+    brightness = np.mean(gray)
+    
+    # Check contrast (standard deviation)
+    contrast = np.std(gray)
+    
+    # Check sharpness using Laplacian variance
+    laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+    
+    # Return quality metrics
+    quality_score = 0
+    issues = []
+    
+    if brightness < 50:
+        issues.append("too dark")
+        quality_score += 20
+    elif brightness > 200:
+        issues.append("too bright")
+        quality_score += 20
+    else:
+        quality_score += 40
+    
+    if contrast < 20:
+        issues.append("low contrast")
+        quality_score += 10
+    else:
+        quality_score += 30
+    
+    if laplacian_var < 50:
+        issues.append("blurry")
+        quality_score += 10
+    else:
+        quality_score += 30
+    
+    return quality_score, issues, {
+        'brightness': brightness,
+        'contrast': contrast,
+        'sharpness': laplacian_var
+    }
+
+def capture_palm_image():
+    """Capture high-quality palm image from camera with quality checks"""
     cap = cv2.VideoCapture(0)
     hand_image = None
     
     if not cap.isOpened():
-        print("Error: Could not open camera")
+        print("❌ Error: Could not open camera. Check permissions and connections.")
         return None
     
-    # Set camera properties for better quality
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    # Optimize camera settings for quality
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    cap.set(cv2.CAP_PROP_FPS, 30)
+    cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)
+    cap.set(cv2.CAP_PROP_FOCUS_MODE, 1)
     
-    # Give camera a moment to stabilize
-    time.sleep(0.5)
-    
-    # Capture image - reduced wait time for web requests
-    # First, try to capture immediately, then wait for GUI if available
-    import time
-    start_time = time.time()
-    capture_time = 3  # Reduced to 3 seconds for web requests
-    frames_captured = 0
-    last_progress_second = -1
-    
-    print("Capturing palm image... Please position your palm in front of the camera.")
-    
-    gui_available = True
-    captured = False
-    
-    # Read a few frames to let camera stabilize
-    for _ in range(5):
+    # Warm up camera
+    for _ in range(10):
         cap.read()
     
-    while not captured:
-        ret, frame = cap.read()
-        if not ret:
-            print("Error: Could not read frame from camera")
-            break
-        
-        frames_captured += 1
-        elapsed = time.time() - start_time
-        
-        # Try to show window if GUI is available
-        if gui_available:
-            try:
-                cv2.imshow("PalmPay - Press 's' to save palm image, 'q' to cancel", frame)
-                key = cv2.waitKey(1) & 0xFF
-                if key == ord('s'):
-                    success, encoded = cv2.imencode('.png', frame)
-                    if success:
-                        hand_image = encoded.tobytes()
-                        print(f"Palm image captured successfully (user pressed 's') - Size: {len(hand_image)} bytes")
-                        captured = True
-                        break
-                elif key == ord('q'):
-                    print("Palm capture cancelled (user pressed 'q')")
-                    break
-            except (cv2.error, Exception) as e:
-                # No GUI available (web server context)
-                gui_available = False
-                print(f"No GUI available, will capture automatically after {capture_time} seconds")
-        
-        # If no GUI, capture automatically after delay
-        if not gui_available:
-            # Show progress every second
-            current_second = int(elapsed)
-            if current_second != last_progress_second and current_second > 0 and current_second < capture_time:
-                last_progress_second = current_second
-                remaining = int(capture_time - elapsed)
-                if remaining > 0:
-                    print(f"Capturing in {remaining} seconds... Please position your palm.")
-            
-            # Capture after timeout
-            if elapsed >= capture_time:
-                try:
-                    success, encoded = cv2.imencode('.png', frame)
-                    if success:
-                        hand_image = encoded.tobytes()
-                        print(f"Palm image captured automatically after {elapsed:.1f} seconds - Size: {len(hand_image)} bytes")
-                        if hand_image and len(hand_image) > 0:
-                            captured = True
-                            break
-                        else:
-                            print("Warning: Image encoded but empty, retrying...")
-                    else:
-                        print("Warning: Failed to encode image, retrying...")
-                except Exception as e:
-                    print(f"Error encoding image: {e}")
-                    # Try one more time
-                    ret, frame = cap.read()
-                    if ret:
-                        success, encoded = cv2.imencode('.png', frame)
-                        if success:
-                            hand_image = encoded.tobytes()
-                            captured = True
-                    break
-        
-        # Safety timeout - capture after 8 seconds max
-        if elapsed >= 8:
-            print("Timeout reached, capturing image now")
-            ret, frame = cap.read()
-            if ret:
-                success, encoded = cv2.imencode('.png', frame)
-                if success:
-                    hand_image = encoded.tobytes()
-                    print(f"Captured at timeout - Size: {len(hand_image)} bytes")
-                    captured = True
-            break
-        
-        time.sleep(0.1)  # Small delay to avoid busy waiting
+    time.sleep(1)
     
-    cap.release()
+    print("📷 Capturing palm image... Position your palm clearly in front of camera")
+    
+    gui_available = True
+    start_time = time.time()
+    capture_time = 4  # Seconds to wait
+    best_frame = None
+    best_quality = -1
+    frames_evaluated = 0
+    
     try:
-        cv2.destroyAllWindows()
-    except:
-        pass  # Ignore if no windows to close
+        while time.time() - start_time < capture_time:
+            ret, frame = cap.read()
+            if not ret:
+                print("❌ Error: Could not read frame from camera")
+                break
+            
+            frames_evaluated += 1
+            quality_score, issues, metrics = assess_image_quality(frame)
+            
+            # Keep the best quality frame
+            if quality_score > best_quality:
+                best_quality = quality_score
+                best_frame = frame.copy()
+            
+            # Display frame with quality feedback
+            if gui_available:
+                try:
+                    # Add quality info to frame
+                    display_frame = frame.copy()
+                    status_text = f"Quality: {quality_score}% | Brightness: {metrics['brightness']:.0f} | Contrast: {metrics['contrast']:.0f}"
+                    cv2.putText(display_frame, status_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                    
+                    if issues:
+                        issue_text = "Issues: " + ", ".join(issues)
+                        cv2.putText(display_frame, issue_text, (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                    
+                    elapsed = time.time() - start_time
+                    remaining = int(capture_time - elapsed)
+                    timer_text = f"Capturing in {remaining}s | Press 's' to save, 'q' to cancel"
+                    cv2.putText(display_frame, timer_text, (10, display_frame.shape[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+                    
+                    cv2.imshow("PalmPay - Palm Registration", display_frame)
+                    key = cv2.waitKey(100) & 0xFF
+                    
+                    if key == ord('s'):
+                        hand_image = best_frame if best_frame is not None else frame
+                        print(f"✅ Image captured (user pressed 's') - Quality: {best_quality}%")
+                        break
+                    elif key == ord('q'):
+                        print("❌ Capture cancelled by user")
+                        break
+                except Exception as e:
+                    gui_available = False
+            
+            time.sleep(0.05)
+        
+        # If auto-capture triggered, use best frame
+        if hand_image is None and best_frame is not None:
+            hand_image = best_frame
+            print(f"✅ Auto-captured best frame - Quality: {best_quality}% after {frames_evaluated} frames")
+        
+        # Encode the image
+        if hand_image is not None:
+            success, encoded = cv2.imencode('.jpg', hand_image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            if success:
+                return encoded.tobytes()
+            else:
+                print("❌ Error: Failed to encode image")
+                return None
     
-    if hand_image is None:
-        if frames_captured == 0:
-            print("Error: Could not read any frames from camera")
-        else:
-            print(f"Error: No image captured after {frames_captured} frames")
-    else:
-        print(f"✅ Successfully captured image: {len(hand_image)} bytes")
+    finally:
+        cap.release()
+        try:
+            cv2.destroyAllWindows()
+        except:
+            pass
     
-    return hand_image
+    return None
 
 def capture_multiple_palm_images(num_captures=3):
     """Capture multiple palm images for better feature extraction"""
@@ -408,12 +424,7 @@ def register():
     hand_images = capture_multiple_palm_images(num_captures=3)
 
     if hand_images is None or len(hand_images) == 0:
-        error_msg = "Hand images not captured. "
-        error_msg += "Possible issues: "
-        error_msg += "1) Camera permissions not granted (System Preferences → Security & Privacy → Camera), "
-        error_msg += "2) Camera is being used by another app, "
-        error_msg += "3) Camera is not connected. "
-        error_msg += "Please check your camera settings and try again."
+        error_msg = "❌ No palm images captured. Troubleshooting: 1) Check camera permissions (System Preferences → Security & Privacy → Camera), 2) Ensure camera is not in use by another app, 3) Verify camera is connected and working."
         return render_template("register.html", message=error_msg)
 
     # Extract palm features from all images and average them
@@ -511,34 +522,40 @@ def deposit():
     pin = request.form.get("pin","").strip()
     amt = request.form.get("amount","0").strip()
 
-    user = get_user(acc)
-    if not user:
-        return render_template("deposit.html", message="Account not found. Please register first.")
-
-    if not authenticate(acc, pin):
-        return render_template("deposit.html", message="Invalid PIN.")
-
-    # Palm authentication for UPI transaction
-    print("Please position your palm for verification...")
-    palm_image = capture_palm_image()
-    if palm_image is None:
-        return render_template("deposit.html", message="Palm image not captured. Please try again.")
-    
-    is_verified, similarity, error_msg = verify_palm_authentication(acc, palm_image)
-    if not is_verified:
-        return render_template("deposit.html", message=f"Palm authentication failed. Similarity: {similarity:.2%}. {error_msg} Please ensure you're using the same palm registered during signup.")
-
     try:
-        amount = float(amt)
-        if amount <= 0:
-            return render_template("deposit.html", message="Amount must be greater than 0.")
-    except ValueError:
-        return render_template("deposit.html", message="Invalid amount.")
+        user = get_user(acc)
+        if not user:
+            return render_template("deposit.html", message="❌ Account not found. Please register first.")
 
-    new_balance = float(user[7]) + amount
-    set_balance(acc, new_balance)
-    add_txn(acc, "deposit", amount, new_balance, "Cash deposit - Palm verified")
-    return render_template("deposit.html", message=f"Deposit successful! Palm verified (similarity: {similarity:.2%}). New balance: {new_balance:.2f}")
+        if not authenticate(acc, pin):
+            return render_template("deposit.html", message="❌ Invalid PIN. Please try again.")
+
+        # Palm authentication for UPI transaction
+        print("📷 Please position your palm for verification...")
+        palm_image = capture_palm_image()
+        if palm_image is None:
+            return render_template("deposit.html", message="❌ Palm image not captured. Please try again.")
+        
+        is_verified, similarity, error_msg = verify_palm_authentication(acc, palm_image)
+        if not is_verified:
+            return render_template("deposit.html", message=f"❌ Palm authentication failed (similarity: {similarity:.1%}). {error_msg}")
+
+        try:
+            amount = float(amt)
+            if amount <= 0:
+                return render_template("deposit.html", message="❌ Amount must be greater than 0.")
+        except ValueError:
+            return render_template("deposit.html", message="❌ Invalid amount format.")
+
+        new_balance = float(user[7]) + amount
+        set_balance(acc, new_balance)
+        add_txn(acc, "deposit", amount, new_balance, "Cash deposit - Palm verified")
+        return render_template("deposit.html", message=f"✅ Deposit successful! Palm verified (match: {similarity:.1%}). New balance: ₹{new_balance:.2f}")
+    
+    except Exception as e:
+        print(f"Error in deposit: {e}")
+        return render_template("deposit.html", message=f"❌ Error processing deposit: {str(e)}")
+
 
 @app.route("/withdraw", methods=["GET", "POST"])
 def withdraw():
@@ -548,25 +565,42 @@ def withdraw():
     pin = request.form.get("pin","").strip()
     amt = request.form.get("amount","0").strip()
 
-    user = get_user(acc)
-    if not user:
-        return render_template("withdraw.html", message="Account not found. Please register first.")
-
-    if not authenticate(acc, pin):
-        return render_template("withdraw.html", message="Invalid PIN.")
-
-    # Palm authentication for UPI transaction
-    print("Please position your palm for verification...")
-    palm_image = capture_palm_image()
-    if palm_image is None:
-        return render_template("withdraw.html", message="Palm image not captured. Please try again.")
-    
-    is_verified, similarity, error_msg = verify_palm_authentication(acc, palm_image)
-    if not is_verified:
-        return render_template("withdraw.html", message=f"Palm authentication failed. Similarity: {similarity:.2%}. {error_msg} Please ensure you're using the same palm registered during signup.")
-
     try:
-        amount = float(amt)
+        user = get_user(acc)
+        if not user:
+            return render_template("withdraw.html", message="❌ Account not found. Please register first.")
+
+        if not authenticate(acc, pin):
+            return render_template("withdraw.html", message="❌ Invalid PIN. Please try again.")
+
+        # Palm authentication for UPI transaction
+        print("📷 Please position your palm for verification...")
+        palm_image = capture_palm_image()
+        if palm_image is None:
+            return render_template("withdraw.html", message="❌ Palm image not captured. Please try again.")
+        
+        is_verified, similarity, error_msg = verify_palm_authentication(acc, palm_image)
+        if not is_verified:
+            return render_template("withdraw.html", message=f"❌ Palm authentication failed (similarity: {similarity:.1%}). {error_msg}")
+
+        try:
+            amount = float(amt)
+            if amount <= 0:
+                return render_template("withdraw.html", message="❌ Amount must be greater than 0.")
+            if amount > float(user[7]):
+                return render_template("withdraw.html", message=f"❌ Insufficient funds. Available balance: ₹{user[7]:.2f}")
+        except ValueError:
+            return render_template("withdraw.html", message="❌ Invalid amount format.")
+
+        new_balance = float(user[7]) - amount
+        set_balance(acc, new_balance)
+        add_txn(acc, "withdraw", amount, new_balance, "Cash withdrawal - Palm verified")
+        return render_template("withdraw.html", message=f"✅ Withdrawal successful! Palm verified (match: {similarity:.1%}). New balance: ₹{new_balance:.2f}")
+    
+    except Exception as e:
+        print(f"Error in withdraw: {e}")
+        return render_template("withdraw.html", message=f"❌ Error processing withdrawal: {str(e)}")
+
         if amount <= 0:
             return render_template("withdraw.html", message="Amount must be greater than 0.")
     except ValueError:
