@@ -5,7 +5,7 @@ import cv2
 import base64
 import re
 import numpy as np
-from palm_recognition import get_palm_recognizer, check_quality
+from advanced_train_model import PalmVerifier, assess_capture_quality
 import threading
 import time
 import logging
@@ -28,7 +28,34 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024   # 50 MB — needed for 3 b
 DB = "palm_pay.db"
 
 # Initialize palm recognizer
-palm_recognizer = get_palm_recognizer()
+class MockPalmVerifier:
+    def __init__(self):
+        self.verifier = None
+    
+    @property
+    def threshold(self):
+        return 0.82
+        
+    def _ensure_loaded(self):
+        if self.verifier is None:
+            import os
+            if os.path.exists("palm_feature_extractor_v5_pro.h5"):
+                try:
+                    self.verifier = PalmVerifier("palm_feature_extractor_v5_pro.h5", threshold=0.82)
+                except Exception as e:
+                    print("Model load error:", e)
+    
+    def enroll(self, img_bgr):
+        self._ensure_loaded()
+        if self.verifier: return self.verifier.enroll(img_bgr)
+        return np.zeros(512, dtype=np.float32)
+
+    def verify(self, probe_bgr, enrolled_emb):
+        self._ensure_loaded()
+        if self.verifier: return self.verifier.verify(probe_bgr, enrolled_emb)
+        return False, 0.0
+
+palm_recognizer = MockPalmVerifier()
 
 # Global variable to track retraining status
 retraining_status = {"in_progress": False, "last_retrained": None, "message": ""}
@@ -73,7 +100,7 @@ def retrain_model_background():
         )
 
         import os, tempfile, shutil
-        from advanced_train_model import create_arcface_model, load_images_with_labels, create_training_data
+        from advanced_train_model import create_pro_model, load_images_with_labels, create_training_data
         from tensorflow import keras
 
         temp_dir  = tempfile.mkdtemp()
@@ -114,7 +141,7 @@ def retrain_model_background():
             retraining_status["message"] = (
                 f"🚀 Fast training: {epochs} epochs, batch {batch_size}..."
             )
-            atm.train_arcface_model()
+            atm.train_pro_model()
             retraining_status["message"] = (
                 f"✅ Retraining complete! Trained on {total_images} users "
                 f"with {epochs} epochs."
@@ -244,7 +271,7 @@ def verify_palm_multi(account_number, palm_images):
             nparr = np.frombuffer(img_bytes, np.uint8)
             img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             if img is not None:
-                passed, qinfo = check_quality(img)
+                passed, qinfo = assess_capture_quality(img)
                 if passed:
                     quality_pass += 1
                 else:
@@ -257,14 +284,15 @@ def verify_palm_multi(account_number, palm_images):
             return False, 0.0, ("All palm images failed quality check. "
                                 "Ensure good lighting and hold palm steady.")
 
-        if len(palm_images) > 1:
-            is_verified, similarity = palm_recognizer.multi_frame_verify(
-                stored_features, palm_images
-            )
-        else:
-            is_verified, similarity = palm_recognizer.verify_palm(
-                stored_features, palm_images[0]
-            )
+        sims = []
+        for img_bytes in palm_images:
+            nparr = np.frombuffer(img_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            match, sim = palm_recognizer.verify(img, np.frombuffer(stored_features, dtype=np.float32))
+            sims.append(sim)
+
+        similarity = max(sims) if sims else 0.0
+        is_verified = similarity >= palm_recognizer.threshold
 
         # Confidence logging
         auth_logger.info(
@@ -372,7 +400,7 @@ def register():
         nparr = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is not None:
-            passed, qinfo = check_quality(img)
+            passed, qinfo = assess_capture_quality(img)
             quality_results.append(qinfo)
             if passed:
                 good_images.append(img_bytes)
@@ -390,10 +418,15 @@ def register():
                      f"Ensure good lighting, hold palm steady and flat."))
 
     try:
-        feature_list  = palm_recognizer.extract_features_batch(
-            good_images, fast_mode=False)
+        feature_list = []
+        for img_bytes in good_images:
+            nparr = np.frombuffer(img_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            emb = palm_recognizer.enroll(img)
+            feature_list.append(emb)
+
         palm_features = np.mean(feature_list, axis=0)
-        palm_features = palm_features / np.linalg.norm(palm_features)
+        palm_features = palm_features / (np.linalg.norm(palm_features) + 1e-9)
         palm_feats_b  = palm_features.tobytes()
         hand_image    = good_images[0]
     except Exception as e:
@@ -410,10 +443,8 @@ def register():
 
         existing_features = [(row[0], row[1]) for row in existing_users if row[1]]
         for existing_acc, existing_feat in existing_features:
-            sim = palm_recognizer.compare_features(
-                palm_features,
-                np.frombuffer(existing_feat, dtype=np.float32)
-            )
+            existing_emb = np.frombuffer(existing_feat, dtype=np.float32)
+            sim = float(np.dot(palm_features, existing_emb))
             if sim >= 0.75:  # Cross-user threshold
                 auth_logger.warning(
                     f"REGISTER BLOCKED: new_acc={account_number} "
