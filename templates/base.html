@@ -1,331 +1,1045 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PalmPay - Biometric Digital Payments</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            'palm-purple': '#8B5CF6',
-            'palm-pink': '#EC4899',
-            'palm-dark': '#0F172A',
-          },
-          animation: {
-            'fade-in': 'fadeIn 0.5s ease-in-out',
-            'slide-up': 'slideUp 0.6s ease-out',
-            'slide-down': 'slideDown 0.6s ease-out',
-            'bounce-slow': 'bounce 2s infinite',
-            'pulse-slow': 'pulse 3s infinite',
-            'shimmer': 'shimmer 2s infinite',
-            'float': 'float 3s ease-in-out infinite',
-          },
-          keyframes: {
-            fadeIn: {
-              '0%': { opacity: '0', transform: 'translateY(10px)' },
-              '100%': { opacity: '1', transform: 'translateY(0)' },
-            },
-            slideUp: {
-              '0%': { opacity: '0', transform: 'translateY(20px)' },
-              '100%': { opacity: '1', transform: 'translateY(0)' },
-            },
-            slideDown: {
-              '0%': { opacity: '0', transform: 'translateY(-20px)' },
-              '100%': { opacity: '1', transform: 'translateY(0)' },
-            },
-            shimmer: {
-              '0%': { backgroundPosition: '-1000px 0' },
-              '100%': { backgroundPosition: '1000px 0' },
-            },
-            float: {
-              '0%, 100%': { transform: 'translateY(0px)' },
-              '50%': { transform: 'translateY(-20px)' },
-            }
-          }
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PalmPay — Biometric Payment Intelligence</title>
+  <meta name="description"
+    content="PalmPay uses cutting-edge palm biometric authentication for ultra-secure digital payments and accounting automation." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <style>
+    /* ──────────────────────────────────────────
+       Design System
+    ────────────────────────────────────────── */
+    :root {
+      /* Premium FinTech Dark Mode */
+      --c-bg: #0A0A0A;
+      --c-surface: #121212;
+      --c-surface2: #1A1A1A;
+      --c-border: rgba(255, 255, 255, 0.08);
+      --c-border2: rgba(255, 255, 255, 0.15);
+
+      /* Vibrant Accents */
+      --c-cyan: #00E5FF;
+      --c-blue: #2962FF;
+      --c-violet: #7C3AED;
+      --c-pink: #EC4899;
+      --c-green: #00E676;
+      --c-amber: #FFAB00;
+      --c-red: #FF3D00;
+
+      /* Typography */
+      --c-text: #FFFFFF;
+      --c-muted: #9CA3AF;
+
+      /* Border Radius */
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-xl: 20px;
+      --radius-2xl: 28px;
+
+      /* Shadows */
+      --shadow-soft: 0 8px 30px rgba(0, 0, 0, 0.4);
+      --shadow-glow: 0 0 20px rgba(0, 229, 255, 0.15);
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--c-bg);
+      color: var(--c-text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* Subtle background texture */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 32px 32px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Ambient radial glows */
+    .bg-glow-1 {
+      position: fixed;
+      top: -20%;
+      left: -10%;
+      width: 700px;
+      height: 700px;
+      background: radial-gradient(circle, rgba(0, 120, 255, 0.13) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+      animation: float1 12s ease-in-out infinite;
+    }
+
+    .bg-glow-2 {
+      position: fixed;
+      bottom: -20%;
+      right: -10%;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(0, 210, 255, 0.10) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+      animation: float2 15s ease-in-out infinite;
+    }
+
+    .bg-glow-3 {
+      position: fixed;
+      top: 40%;
+      left: 50%;
+      width: 400px;
+      height: 400px;
+      transform: translateX(-50%);
+      background: radial-gradient(circle, rgba(124, 58, 237, 0.07) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    @keyframes float1 {
+
+      0%,
+      100% {
+        transform: translate(0, 0);
+      }
+
+      50% {
+        transform: translate(40px, 30px);
       }
     }
-  </script>
-  <style>
-    .gradient-primary {
-      background: linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%);
+
+    @keyframes float2 {
+
+      0%,
+      100% {
+        transform: translate(0, 0);
+      }
+
+      50% {
+        transform: translate(-30px, -40px);
+      }
     }
-    .gradient-dark {
-      background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+
+    /* ── Navigation ─────────────────────────────── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10, 10, 10, 0.7);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-bottom: 1px solid var(--c-border);
     }
-    .card-hover {
+
+    .nav-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 24px;
+      height: 72px;
+      /* Slightly taller for premium feel */
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+
+    .nav-logo-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--c-cyan), var(--c-blue));
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 16px;
+      color: #FFF;
+      box-shadow: 0 4px 12px rgba(0, 229, 255, 0.3);
+    }
+
+    .nav-logo-text {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--c-text);
+      letter-spacing: -0.5px;
+    }
+
+    .nav-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--c-muted);
+      padding: 6px 12px;
+      border-radius: 100px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .nav-status .dot {
+      width: 6px;
+      height: 6px;
+      background: var(--c-green);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--c-green);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: 0.4
+      }
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .nav-link {
+      padding: 8px 16px;
+      border-radius: 100px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--c-muted);
+      text-decoration: none;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+
+    .nav-link:hover {
+      color: var(--c-text);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .nav-link.active {
+      color: var(--c-text);
+      background: rgba(255, 255, 255, 0.1);
+      font-weight: 600;
+    }
+
+    /* Hamburger */
+    .hamburger {
+      display: none;
+      background: none;
+      border: none;
+      color: var(--c-muted);
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 8px;
+      transition: color 0.2s;
+    }
+
+    .hamburger:hover {
+      color: var(--c-cyan);
+    }
+
+    .mobile-menu {
+      display: none;
+      flex-direction: column;
+      gap: 2px;
+      padding: 12px 24px 16px;
+      border-top: 1px solid var(--c-border);
+    }
+
+    .mobile-menu.open {
+      display: flex;
+    }
+
+    .mobile-menu .nav-link {
+      padding: 10px 14px;
+    }
+
+    /* ── Page wrapper ─────────────────────────────── */
+    .page-wrapper {
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── Page Header ─────────────────────────────── */
+    .page-header {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 52px 24px 32px;
+      text-align: center;
+    }
+
+    .page-header .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--c-cyan);
+      margin-bottom: 16px;
+    }
+
+    .page-header h1 {
+      font-size: clamp(2rem, 5vw, 4rem);
+      font-weight: 800;
+      letter-spacing: -1.5px;
+      line-height: 1.1;
+      color: var(--c-text);
+      margin-bottom: 16px;
+    }
+
+    .page-header .subtitle {
+      font-size: 16px;
+      color: var(--c-muted);
+      max-width: 560px;
+      margin: 0 auto;
+      line-height: 1.7;
+    }
+
+    /* ── Main content ─────────────────────────────── */
+    .main-content {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 24px 80px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── Cards ─────────────────────────────── */
+    .card {
+      background: var(--c-surface);
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius-2xl);
+      box-shadow: var(--shadow-soft);
+      overflow: hidden;
       transition: all 0.3s ease;
-      transform: translateY(0);
     }
-    .card-hover:hover {
-      transform: translateY(-5px);
-      box-shadow: 0 20px 40px rgba(139, 92, 246, 0.2);
+
+    .card:hover {
+      border-color: var(--c-border2);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+      transform: translateY(-2px);
     }
+
+    .card-header {
+      padding: 32px 32px 24px;
+      border-bottom: 1px solid var(--c-border);
+      background: transparent;
+    }
+
+    .card-body {
+      padding: 32px;
+    }
+
+    .card-footer {
+      padding: 20px 32px;
+      border-top: 1px solid var(--c-border);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* ── Glowing Icon Badge ─────────────────────────── */
+    .icon-badge {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      margin-bottom: 16px;
+      position: relative;
+    }
+
+    .icon-badge::after {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      border-radius: 16px;
+      background: inherit;
+      filter: blur(12px);
+      opacity: 0.4;
+      z-index: -1;
+    }
+
+    .icon-badge-cyan {
+      background: linear-gradient(135deg, rgba(0, 210, 255, 0.2), rgba(0, 120, 255, 0.2));
+      color: var(--c-cyan);
+      border: 1px solid rgba(0, 210, 255, 0.3);
+    }
+
+    .icon-badge-green {
+      background: linear-gradient(135deg, rgba(0, 229, 160, 0.2), rgba(0, 120, 255, 0.2));
+      color: var(--c-green);
+      border: 1px solid rgba(0, 229, 160, 0.3);
+    }
+
+    .icon-badge-violet {
+      background: linear-gradient(135deg, rgba(124, 58, 237, 0.25), rgba(236, 72, 153, 0.2));
+      color: #a78bfa;
+      border: 1px solid rgba(124, 58, 237, 0.4);
+    }
+
+    .icon-badge-amber {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(239, 68, 68, 0.15));
+      color: var(--c-amber);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+    }
+
+    .icon-badge-red {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(245, 158, 11, 0.15));
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.35);
+    }
+
+    /* ── Buttons ─────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 14px 28px;
+      border: none;
+      border-radius: var(--radius-lg);
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn:active {
+      transform: scale(0.97);
+    }
+
+    .btn::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255, 255, 255, 0);
+      transition: background 0.2s;
+    }
+
+    .btn:hover::after {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
     .btn-primary {
-      background: linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%);
-      transition: all 0.3s ease;
+      background: var(--c-text);
+      color: #000;
     }
+
     .btn-primary:hover {
-      transform: scale(1.05);
-      box-shadow: 0 10px 25px rgba(139, 92, 246, 0.4);
+      box-shadow: 0 4px 20px rgba(255, 255, 255, 0.2);
     }
-    .shimmer-bg {
-      background: linear-gradient(90deg, rgba(255,255,255,0.1), rgba(255,255,255,0.2), rgba(255,255,255,0.1));
-      background-size: 1000px 100%;
+
+    .btn-green {
+      background: linear-gradient(135deg, var(--c-green), #00b377);
+      color: #000;
+      font-weight: 700;
+      box-shadow: 0 0 24px rgba(0, 229, 160, 0.25);
+    }
+
+    .btn-green:hover {
+      box-shadow: 0 0 40px rgba(0, 229, 160, 0.4);
+      transform: translateY(-1px);
+    }
+
+    .btn-violet {
+      background: linear-gradient(135deg, var(--c-violet), var(--c-pink));
+      color: #fff;
+      font-weight: 700;
+      box-shadow: 0 0 24px rgba(124, 58, 237, 0.3);
+    }
+
+    .btn-violet:hover {
+      box-shadow: 0 0 40px rgba(124, 58, 237, 0.45);
+      transform: translateY(-1px);
+    }
+
+    .btn-amber {
+      background: linear-gradient(135deg, var(--c-amber), #ef4444);
+      color: #000;
+      font-weight: 700;
+      box-shadow: 0 0 24px rgba(245, 158, 11, 0.3);
+    }
+
+    .btn-amber:hover {
+      box-shadow: 0 0 40px rgba(245, 158, 11, 0.45);
+      transform: translateY(-1px);
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--c-cyan);
+      border: 1px solid rgba(0, 210, 255, 0.35);
+    }
+
+    .btn-outline:hover {
+      background: rgba(0, 210, 255, 0.07);
+    }
+
+    .btn-full {
+      width: 100%;
+    }
+
+    .btn-lg {
+      padding: 16px 32px;
+      font-size: 16px;
+      border-radius: 14px;
+    }
+
+    /* ── Inputs ─────────────────────────────── */
+    .form-group {
+      margin-bottom: 24px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--c-muted);
+      margin-bottom: 10px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 16px 20px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius-lg);
+      color: var(--c-text);
+      font-family: inherit;
+      font-size: 16px;
+      transition: all 0.2s ease;
+      outline: none;
+    }
+
+    .form-input::placeholder {
+      color: rgba(255, 255, 255, 0.2);
+    }
+
+    .form-input:focus {
+      border-color: var(--c-text);
+      background: rgba(255, 255, 255, 0.05);
+      box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.05);
+    }
+
+    .form-input-prefix {
+      position: relative;
+    }
+
+    .form-input-prefix .prefix {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--c-muted);
+      font-weight: 600;
+    }
+
+    .form-input-prefix input {
+      padding-left: 30px;
+    }
+
+    select.form-input {
+      appearance: none;
+      cursor: pointer;
+    }
+
+    select.form-input option {
+      background: var(--c-surface);
+    }
+
+    /* ── Alert Banners ─────────────────────────── */
+    .alert {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 16px 20px;
+      border-radius: var(--radius-lg);
+      margin-bottom: 24px;
+      border: 1px solid;
+      background: rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.98);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .alert-icon {
+      flex-shrink: 0;
+      margin-top: 2px;
+      font-size: 18px;
+    }
+
+    .alert-msg {
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.5;
+    }
+
+    .alert-success {
+      border-color: rgba(0, 230, 118, 0.3);
+      color: var(--c-green);
+    }
+
+    .alert-error {
+      border-color: rgba(255, 61, 0, 0.3);
+      color: var(--c-red);
+    }
+
+    .alert-info {
+      border-color: rgba(41, 98, 255, 0.3);
+      color: var(--c-blue);
+    }
+
+    .alert-warning {
+      border-color: rgba(255, 171, 0, 0.3);
+      color: var(--c-amber);
+    }
+
+    /* ── Divider ─────────────────────────── */
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin: 28px 0;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--c-border);
+    }
+
+    .divider span {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--c-muted);
+    }
+
+    /* ── Stat pill ─────────────────────────── */
+    .stat-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 100px;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid;
+    }
+
+    .stat-pill-cyan {
+      background: rgba(0, 229, 255, 0.08);
+      border-color: rgba(0, 229, 255, 0.25);
+      color: var(--c-cyan);
+    }
+
+    .stat-pill-green {
+      background: rgba(0, 230, 118, 0.08);
+      border-color: rgba(0, 230, 118, 0.25);
+      color: var(--c-green);
+    }
+
+    .stat-pill-red {
+      background: rgba(255, 61, 0, 0.08);
+      border-color: rgba(255, 61, 0, 0.25);
+      color: var(--c-red);
+    }
+
+    .stat-pill-amber {
+      background: rgba(255, 171, 0, 0.08);
+      border-color: rgba(255, 171, 0, 0.25);
+      color: var(--c-amber);
+    }
+
+    .stat-pill-violet {
+      background: rgba(124, 58, 237, 0.08);
+      border-color: rgba(124, 58, 237, 0.25);
+      color: var(--c-violet);
+    }
+
+    /* ── Footer ─────────────────────────────── */
+    footer {
+      position: relative;
+      z-index: 1;
+      border-top: 1px solid var(--c-border);
+      background: rgba(5, 12, 20, 0.9);
+      backdrop-filter: blur(10px);
+    }
+
+    .footer-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .footer-inner p {
+      font-size: 13px;
+      color: var(--c-muted);
+    }
+
+    .footer-inner .footer-accent {
+      background: linear-gradient(90deg, var(--c-cyan), var(--c-blue));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-weight: 700;
+    }
+
+    /* ── Loading Overlay ─────────────────────── */
+    #loading-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: rgba(10, 10, 10, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #loading-overlay.active {
+      display: flex;
+    }
+
+    .loading-card {
+      background: var(--c-surface);
+      border: 1px solid var(--c-border2);
+      border-radius: var(--radius-2xl);
+      padding: 48px;
+      text-align: center;
+      box-shadow: 0 12px 60px rgba(0, 0, 0, 0.6);
+    }
+
+    .spinner {
+      width: 64px;
+      height: 64px;
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top-color: var(--c-text);
+      border-radius: 50%;
+      animation: spin 0.8s cubic-bezier(0.5, 0.1, 0.15, 1) infinite;
+      margin: 0 auto 24px;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .loading-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--c-text);
+      margin-bottom: 8px;
+    }
+
+    .loading-sub {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--c-muted);
+    }
+
+    /* ── Palm scanner animation (decorative) ─── */
+    .palm-scanner {
+      width: 80px;
+      height: 80px;
+      position: relative;
+      margin: 0 auto 20px;
+    }
+
+    .palm-scanner svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .scan-line {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--c-cyan), transparent);
+      animation: scanMove 2s ease-in-out infinite;
+      box-shadow: 0 0 8px var(--c-cyan);
+    }
+
+    @keyframes scanMove {
+      0% {
+        top: 0;
+        opacity: 0;
+      }
+
+      10% {
+        opacity: 1;
+      }
+
+      90% {
+        opacity: 1;
+      }
+
+      100% {
+        top: 100%;
+        opacity: 0;
+      }
+    }
+
+    /* ── Monospace highlight ─────────── */
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* ── Responsive ──────────────────── */
+    @media (max-width: 768px) {
+      .nav-links {
+        display: none;
+      }
+
+      .hamburger {
+        display: block;
+      }
+
+      .nav-inner {
+        height: 64px;
+        padding: 0 16px;
+      }
+
+      .card-body {
+        padding: 24px;
+      }
+
+      .card-header {
+        padding: 24px 24px 20px;
+      }
+
+      .card-footer {
+        padding: 16px 24px;
+      }
+
+      .main-content {
+        padding: 0 16px 60px;
+      }
+
+      .page-header {
+        padding: 36px 16px 24px;
+      }
+
+      .page-header h1 {
+        font-size: clamp(2rem, 8vw, 2.5rem);
+      }
     }
   </style>
 </head>
-<body class="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white overflow-x-hidden">
-  <!-- Background decoration -->
-  <div class="fixed inset-0 overflow-hidden pointer-events-none">
-    <div class="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse-slow"></div>
-    <div class="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse-slow"></div>
-  </div>
 
-  <!-- Navigation -->
-  <nav class="bg-black/20 backdrop-blur-md border-b border-white/10 sticky top-0 z-50 shadow-lg">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between h-16">
-        <a href="{{ url_for('home') }}" class="flex items-center space-x-2 group">
-          <div class="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
-            <span class="text-white font-bold text-sm">P</span>
-          </div>
-          <span class="font-extrabold text-xl bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent group-hover:from-pink-400 group-hover:to-purple-400 transition-all duration-300">PalmPay</span>
+<body>
+
+  <!-- Ambient background glows -->
+  <div class="bg-glow-1"></div>
+  <div class="bg-glow-2"></div>
+  <div class="bg-glow-3"></div>
+
+  <div class="page-wrapper">
+
+    <!-- ── Navigation ── -->
+    <nav id="main-nav">
+      <div class="nav-inner">
+        <a href="{{ url_for('home') }}" class="nav-logo">
+          <div class="nav-logo-icon"><i class="fas fa-hand-sparkles"></i></div>
+          <span class="nav-logo-text">PalmPay</span>
         </a>
-        
-        <!-- Desktop Navigation -->
-        <div class="hidden md:flex items-center space-x-1">
-          <a class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-all duration-200 hover:scale-105" href="{{ url_for('register') }}">Register</a>
-          <a class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-all duration-200 hover:scale-105" href="{{ url_for('deposit') }}">Deposit</a>
-          <a class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-all duration-200 hover:scale-105" href="{{ url_for('withdraw') }}">Withdraw</a>
-          <a class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-all duration-200 hover:scale-105" href="{{ url_for('transfer') }}">Transfer</a>
-          <a class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-all duration-200 hover:scale-105" href="{{ url_for('balance') }}">Balance</a>
-          <a class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-all duration-200 hover:scale-105" href="{{ url_for('users') }}">Users</a>
-          <a class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-all duration-200 hover:scale-105" href="{{ url_for('retrain') }}">Retrain</a>
-          <a class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-all duration-200 hover:scale-105" href="{{ url_for('history') }}">History</a>
+
+        <div class="nav-status">
+          <span class="dot"></span>
+          <span>Biometric System Online</span>
         </div>
 
-        <!-- Mobile menu button -->
-        <button class="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors" onclick="toggleMobileMenu()">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
-          </svg>
+        <!-- Desktop nav -->
+        <div class="nav-links" id="desktop-nav">
+          <a class="nav-link" href="{{ url_for('register') }}"><i class="fas fa-user-plus fa-fw"></i> Register</a>
+          <a class="nav-link" href="{{ url_for('deposit') }}"><i class="fas fa-arrow-down fa-fw"></i> Deposit</a>
+          <a class="nav-link" href="{{ url_for('withdraw') }}"><i class="fas fa-arrow-up fa-fw"></i> Withdraw</a>
+          <a class="nav-link" href="{{ url_for('transfer') }}"><i class="fas fa-exchange-alt fa-fw"></i> Transfer</a>
+          <a class="nav-link" href="{{ url_for('balance') }}"><i class="fas fa-wallet fa-fw"></i> Balance</a>
+          <a class="nav-link" href="{{ url_for('history') }}"><i class="fas fa-history fa-fw"></i> History</a>
+          <a class="nav-link" href="{{ url_for('users') }}"><i class="fas fa-users fa-fw"></i> Users</a>
+          <a class="nav-link" href="{{ url_for('retrain') }}"><i class="fas fa-brain fa-fw"></i> Retrain</a>
+        </div>
+
+        <button class="hamburger" id="hamburger-btn" onclick="toggleMobileMenu()">
+          <i class="fas fa-bars fa-lg"></i>
         </button>
       </div>
 
-      <!-- Mobile Navigation -->
-      <div id="mobile-menu" class="md:hidden hidden border-t border-white/10">
-        <div class="py-2 space-y-1">
-          <a class="block px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors" href="{{ url_for('register') }}">Register</a>
-          <a class="block px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors" href="{{ url_for('deposit') }}">Deposit</a>
-          <a class="block px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors" href="{{ url_for('withdraw') }}">Withdraw</a>
-          <a class="block px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors" href="{{ url_for('transfer') }}">Transfer</a>
-          <a class="block px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors" href="{{ url_for('balance') }}">Balance</a>
-          <a class="block px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors" href="{{ url_for('users') }}">Users</a>
-          <a class="block px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors" href="{{ url_for('retrain') }}">Retrain</a>
-          <a class="block px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors" href="{{ url_for('history') }}">History</a>
-        </div>
+      <!-- Mobile nav -->
+      <div class="mobile-menu" id="mobile-menu">
+        <a class="nav-link" href="{{ url_for('register') }}"><i class="fas fa-user-plus fa-fw me-2"></i> Register</a>
+        <a class="nav-link" href="{{ url_for('deposit') }}"><i class="fas fa-arrow-down fa-fw me-2"></i> Deposit</a>
+        <a class="nav-link" href="{{ url_for('withdraw') }}"><i class="fas fa-arrow-up fa-fw me-2"></i> Withdraw</a>
+        <a class="nav-link" href="{{ url_for('transfer') }}"><i class="fas fa-exchange-alt fa-fw me-2"></i> Transfer</a>
+        <a class="nav-link" href="{{ url_for('balance') }}"><i class="fas fa-wallet fa-fw me-2"></i> Balance</a>
+        <a class="nav-link" href="{{ url_for('history') }}"><i class="fas fa-history fa-fw me-2"></i> History</a>
+        <a class="nav-link" href="{{ url_for('users') }}"><i class="fas fa-users fa-fw me-2"></i> Users</a>
+        <a class="nav-link" href="{{ url_for('retrain') }}"><i class="fas fa-brain fa-fw me-2"></i> Retrain</a>
       </div>
-    </div>
-  </nav>
+    </nav>
 
-  <!-- Header -->
-  <header class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 animate-fade-in">
-    <div class="text-center">
-      <h1 class="text-4xl md:text-6xl font-extrabold mb-4">
-        <span class="bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent animate-fade-in">PalmPay</span>
-      </h1>
-      <p class="text-lg md:text-xl text-gray-300 max-w-2xl mx-auto animate-slide-up">
-        Revolutionary UPI-like platform with biometric palm authentication and secure digital transactions
-      </p>
-      <div class="mt-6 flex justify-center">
-        <div class="flex items-center space-x-2 text-sm text-gray-400">
-          <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-          <span>Secure • Fast • Reliable</span>
-        </div>
+    <!-- ── Page-level header ── -->
+    <header class="page-header">
+      {% block page_header %}
+      <div class="eyebrow"><i class="fas fa-hand-sparkles"></i> PalmPay Biometric Intelligence</div>
+      <h1>Secure • Instant • Intelligent</h1>
+      <p class="subtitle">Advanced palm biometric authentication powering next-generation financial operations.</p>
+      {% endblock %}
+    </header>
+
+    <!-- ── Main content ── -->
+    <main class="main-content">
+      {% block content %}{% endblock %}
+    </main>
+
+    <!-- ── Footer ── -->
+    <footer>
+      <div class="footer-inner">
+        <p>© 2025 <span class="footer-accent">PalmPay</span> — Biometric Payment Intelligence Platform</p>
+        <p>768D Hybrid Features &nbsp;·&nbsp; ArcFace + Gabor Palm Lines &nbsp;·&nbsp; Real-time Quality Gating</p>
       </div>
-    </div>
-  </header>
+    </footer>
 
-  <!-- Main Content -->
-  <main class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16 animate-slide-up">
-    {% block content %}{% endblock %}
-  </main>
+  </div><!-- /page-wrapper -->
 
-  <!-- Footer -->
-  <footer class="relative border-t border-white/10 bg-black/20 backdrop-blur-md mt-20">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div class="text-center text-gray-400">
-        <p>&copy; 2024 PalmPay. Built with cutting-edge biometric technology.</p>
-      </div>
-    </div>
-  </footer>
-
-  <!-- Loading Overlay -->
-  <div id="loading-overlay" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden items-center justify-center">
-    <div class="bg-gradient-to-br from-white/10 to-white/5 rounded-3xl p-8 border border-white/20 shadow-2xl backdrop-blur-sm text-center">
-      <div class="w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4 animate-spin">
-        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+  <!-- ── Loading Overlay ── -->
+  <div id="loading-overlay">
+    <div class="loading-card">
+      <div class="palm-scanner">
+        <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="1" y="1" width="78" height="78" rx="12" stroke="rgba(0,210,255,0.3)" stroke-width="1.5" />
+          <path
+            d="M20 55 Q20 60 25 60 L55 60 Q60 60 60 55 L60 40 L60 30 Q60 25 57 25 L57 45 Q57 48 54 48 L54 30 Q54 25 51 25 L51 45 Q51 48 48 48 L48 28 Q48 23 45 23 L45 48 Q45 51 42 51 L42 26 Q42 21 39 21 Q36 21 36 26 L36 48 L36 55 Q36 60 31 60"
+            stroke="rgba(0,210,255,0.6)" stroke-width="1.5" stroke-linecap="round" />
+          <rect x="8" y="8" width="12" height="12" rx="3" stroke="rgba(0,210,255,0.5)" stroke-width="1.5" fill="none" />
+          <rect x="60" y="8" width="12" height="12" rx="3" stroke="rgba(0,210,255,0.5)" stroke-width="1.5"
+            fill="none" />
+          <rect x="8" y="60" width="12" height="12" rx="3" stroke="rgba(0,210,255,0.5)" stroke-width="1.5"
+            fill="none" />
+          <rect x="60" y="60" width="12" height="12" rx="3" stroke="rgba(0,210,255,0.5)" stroke-width="1.5"
+            fill="none" />
         </svg>
+        <div class="scan-line"></div>
       </div>
-      <h3 class="text-lg font-semibold text-white mb-2">Processing...</h3>
-      <p class="text-gray-400 text-sm">Please wait while we process your request</p>
+      <div class="spinner"></div>
+      <div class="loading-title">Analyzing Palm Biometrics</div>
+      <div class="loading-sub">Please hold your palm steady in view…</div>
     </div>
   </div>
 
   <script>
+    /* ── Active nav highlighting ── */
+    (function () {
+      const links = document.querySelectorAll('.nav-link');
+      links.forEach(l => {
+        if (l.href === window.location.href) l.classList.add('active');
+      });
+    })();
+
+    /* ── Mobile menu ── */
     function toggleMobileMenu() {
-      const menu = document.getElementById('mobile-menu');
-      menu.classList.toggle('hidden');
+      document.getElementById('mobile-menu').classList.toggle('open');
     }
 
-    // Loading state management
+    /* ── Loading overlay ── */
     function showLoading() {
-      document.getElementById('loading-overlay').classList.remove('hidden');
-      document.getElementById('loading-overlay').classList.add('flex');
+      document.getElementById('loading-overlay').classList.add('active');
     }
-
     function hideLoading() {
-      document.getElementById('loading-overlay').classList.add('hidden');
-      document.getElementById('loading-overlay').classList.remove('flex');
+      document.getElementById('loading-overlay').classList.remove('active');
     }
 
-    // Add loading states to all forms
-    document.addEventListener('DOMContentLoaded', function() {
-      const forms = document.querySelectorAll('form');
-      forms.forEach(form => {
-        form.addEventListener('submit', function() {
-          showLoading();
+    document.addEventListener('DOMContentLoaded', () => {
+      /* Attach loading to forms */
+      document.querySelectorAll('form').forEach(f => {
+        f.addEventListener('submit', showLoading);
+      });
+
+      /* Input focus glow */
+      document.querySelectorAll('.form-input').forEach(inp => {
+        inp.addEventListener('focus', () => {
+          inp.closest('.form-group')?.classList.add('focused');
+        });
+        inp.addEventListener('blur', () => {
+          inp.closest('.form-group')?.classList.remove('focused');
         });
       });
 
-      // Add loading states to navigation links
-      const navLinks = document.querySelectorAll('nav a');
-      navLinks.forEach(link => {
-        link.addEventListener('click', function(e) {
-          // Only show loading for internal links
-          const href = this.getAttribute('href');
-          if (href.startsWith('/') || href.includes('url_for')) {
-            showLoading();
-          }
-        });
-      });
-
-      // Add hover effects to buttons
-      const buttons = document.querySelectorAll('button');
-      buttons.forEach(button => {
-        button.addEventListener('mouseenter', function() {
-          this.style.transform = 'scale(1.05)';
-        });
-        button.addEventListener('mouseleave', function() {
-          this.style.transform = 'scale(1)';
-        });
-      });
-    });
-
-    // Add smooth scrolling for better UX
-    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-      anchor.addEventListener('click', function (e) {
-        e.preventDefault();
-        document.querySelector(this.getAttribute('href')).scrollIntoView({
-          behavior: 'smooth'
-        });
-      });
-    });
-
-    // Add typing animation to input fields
-    const inputs = document.querySelectorAll('input[type="text"], input[type="password"], input[type="number"]');
-    inputs.forEach(input => {
-      input.addEventListener('focus', function() {
-        this.style.borderColor = 'rgba(168, 85, 247, 0.5)';
-        this.style.boxShadow = '0 0 0 3px rgba(168, 85, 247, 0.1)';
-      });
-      
-      input.addEventListener('blur', function() {
-        this.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-        this.style.boxShadow = 'none';
-      });
-    });
-
-    // Add success animation for form submissions
-    function showSuccessMessage(message) {
-      const successDiv = document.createElement('div');
-      successDiv.className = 'fixed top-4 right-4 bg-gradient-to-r from-emerald-500 to-green-500 text-white px-6 py-4 rounded-xl shadow-lg z-50 transform translate-x-full transition-transform duration-300';
-      successDiv.innerHTML = `
-        <div class="flex items-center space-x-3">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-          </svg>
-          <span class="font-medium">${message}</span>
-        </div>
-      `;
-      
-      document.body.appendChild(successDiv);
-      
-      // Animate in
-      setTimeout(() => {
-        successDiv.style.transform = 'translateX(0)';
-      }, 100);
-      
-      // Animate out and remove
-      setTimeout(() => {
-        successDiv.style.transform = 'translateX(100%)';
+      /* Stagger-animate cards on load */
+      document.querySelectorAll('.feature-card').forEach((card, i) => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(24px)';
+        card.style.transition = `opacity 0.5s ease ${i * 0.08}s, transform 0.5s ease ${i * 0.08}s`;
         setTimeout(() => {
-          document.body.removeChild(successDiv);
-        }, 300);
-      }, 3000);
-    }
-
-    // Add error animation for form errors
-    function showErrorMessage(message) {
-      const errorDiv = document.createElement('div');
-      errorDiv.className = 'fixed top-4 right-4 bg-gradient-to-r from-rose-500 to-red-500 text-white px-6 py-4 rounded-xl shadow-lg z-50 transform translate-x-full transition-transform duration-300';
-      errorDiv.innerHTML = `
-        <div class="flex items-center space-x-3">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-          </svg>
-          <span class="font-medium">${message}</span>
-        </div>
-      `;
-      
-      document.body.appendChild(errorDiv);
-      
-      // Animate in
-      setTimeout(() => {
-        errorDiv.style.transform = 'translateX(0)';
-      }, 100);
-      
-      // Animate out and remove
-      setTimeout(() => {
-        errorDiv.style.transform = 'translateX(100%)';
-        setTimeout(() => {
-          document.body.removeChild(errorDiv);
-        }, 300);
-      }, 4000);
-    }
-
-    // Add floating animation to cards
-    const cards = document.querySelectorAll('.group');
-    cards.forEach((card, index) => {
-      card.style.animationDelay = `${index * 0.1}s`;
-      card.classList.add('animate-fade-in');
-    });
-
-    // Add parallax effect to background elements
-    window.addEventListener('scroll', function() {
-      const scrolled = window.pageYOffset;
-      const parallaxElements = document.querySelectorAll('.fixed');
-      parallaxElements.forEach(element => {
-        const speed = 0.5;
-        element.style.transform = `translateY(${scrolled * speed}px)`;
+          card.style.opacity = '1';
+          card.style.transform = 'translateY(0)';
+        }, 80 + i * 80);
       });
     });
   </script>
 </body>
+
 </html>

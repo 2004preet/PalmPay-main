@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% block page_header %}
+<div class="eyebrow"><i class="fas fa-credit-card"></i> Payments</div>
+<h1>Stripe Payment History</h1>
+<p class="subtitle">View your real payment transactions processed through Stripe.</p>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:600px;margin:0 auto;">
+
+    {% if message %}
+    <div class="alert alert-info"><span class="alert-icon"><i class="fas fa-info-circle"></i></span><span
+            class="alert-msg">{{ message }}</span></div>
+    {% endif %}
+
+    {% if not txns and not message %}
+    <div class="card">
+        <div class="card-body">
+            <form method="POST">
+                <div class="form-group">
+                    <label class="form-label">Account Number *</label>
+                    <input type="text" name="account_number" class="form-input" placeholder="ACC123456789" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">4-Digit PIN *</label>
+                    <input type="password" name="pin" class="form-input mono" placeholder="••••" maxlength="4"
+                        pattern="[0-9]{4}" required style="letter-spacing:8px;font-size:20px;">
+                </div>
+                <button type="submit" class="btn btn-full btn-lg"
+                    style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-weight:700;border:none;">
+                    <i class="fas fa-search"></i> View Stripe Payments
+                </button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if txns %}
+    <div class="card">
+        <div class="card-header" style="background:transparent;border-bottom:1px solid var(--c-border);">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <div
+                    style="width:40px;height:40px;background:rgba(99,102,241,0.1);border-radius:10px;display:flex;align-items:center;justify-content:center;">
+                    <i class="fas fa-credit-card" style="color:#6366f1;"></i>
+                </div>
+                <div>
+                    <h3 style="font-size:16px;font-weight:700;color:var(--c-text);">Stripe Transactions</h3>
+                    <p style="font-size:13px;color:var(--c-muted);">{{ txns|length }} transactions found</p>
+                </div>
+            </div>
+        </div>
+        <div class="card-body" style="padding:0;">
+            {% for txn in txns %}
+            <div
+                style="padding:16px 24px;border-bottom:1px solid var(--c-border);display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:14px;">
+                    <div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+            {% if txn[0] == 'deposit' %}
+            background:rgba(0,230,118,0.1);color:var(--c-green);
+            {% else %}
+            background:rgba(255,61,0,0.1);color:var(--c-red);
+            {% endif %}">
+                        <i class="fas fa-{% if txn[0] == 'deposit' %}arrow-down{% else %}arrow-up{% endif %}"></i>
+                    </div>
+                    <div>
+                        <p style="font-weight:600;font-size:14px;color:var(--c-text);text-transform:capitalize;">{{
+                            txn[0] }}</p>
+                        <p style="font-size:12px;color:var(--c-muted);margin-top:2px;">{{ txn[3] }}</p>
+                        <p style="font-size:11px;color:var(--c-muted);margin-top:2px;font-family:var(--f-mono);">{{
+                            txn[4] }}</p>
+                    </div>
+                </div>
+                <div style="text-align:right;">
+                    <p style="font-weight:700;font-size:16px;
+            {% if txn[0] == 'deposit' %}color:var(--c-green);{% else %}color:var(--c-red);{% endif %}">
+                        {% if txn[0] == 'deposit' %}+{% else %}-{% endif %}₹{{ "%.2f"|format(txn[1]) }}
+                    </p>
+                    <p style="font-size:12px;color:var(--c-muted);margin-top:2px;">Bal: ₹{{ "%.2f"|format(txn[2]) }}</p>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div style="text-align:center;margin-top:24px;">
+        <a href="{{ url_for('deposit') }}" style="color:#6366f1;text-decoration:none;font-size:14px;font-weight:600;">
+            <i class="fas fa-plus-circle"></i> Make a Deposit
+        </a>
+        &nbsp;&nbsp;·&nbsp;&nbsp;
+        <a href="{{ url_for('home') }}" style="color:var(--c-muted);text-decoration:none;font-size:14px;">
+            <i class="fas fa-arrow-left"></i> Home
+        </a>
+    </div>
+</div>
+{% endblock %}

@@ -1,128 +1,236 @@
 {% extends 'base.html' %}
+
+{% block page_header %}
+<div class="eyebrow"><i class="fas fa-rocket"></i> PalmPay — Home</div>
+<h1>The Future of<br>Biometric Payments</h1>
+<p class="subtitle">Ultra-secure palm authentication combined with enterprise-grade accounting automation.</p>
+{% endblock %}
+
 {% block content %}
-<!-- Hero Section -->
-<div class="text-center mb-16">
-  <div class="inline-flex items-center px-4 py-2 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-full border border-purple-500/30 mb-6">
-    <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse mr-2"></div>
-    <span class="text-sm font-medium">Live System</span>
-  </div>
-  <h2 class="text-3xl md:text-4xl font-bold mb-4 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-    Welcome to the Future of Payments
-  </h2>
-  <p class="text-lg text-gray-400 max-w-2xl mx-auto">
-    Experience secure, fast, and reliable transactions with our revolutionary palm-based biometric authentication system.
-  </p>
+
+<!-- Live system stats bar -->
+<div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:64px;">
+  <span class="stat-pill stat-pill-green"><i class="fas fa-circle" style="font-size: 8px;"></i> System Online</span>
+  <span class="stat-pill stat-pill-cyan"><i class="fas fa-shield-check"></i> Bank-Grade Security</span>
+  <span class="stat-pill stat-pill-violet"><i class="fas fa-fingerprint"></i> Biometric Auth</span>
 </div>
 
-<!-- Feature Cards -->
-<div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
-  <!-- Registration Card -->
-  <div class="group bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-2xl p-6 border border-purple-500/20 hover:border-purple-400/40 transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/20">
-    <div class="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
-      <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-      </svg>
+<!-- Palm scanner hero graphic -->
+<div style="display:flex;justify-content:center;margin-bottom:80px;">
+  <div style="position:relative;width:240px;height:240px;">
+    <!-- Rotating rings -->
+    <div
+      style="position:absolute;inset:0;border-radius:50%;border:1px solid rgba(0, 229, 255, 0.1);animation:spinSlow 20s linear infinite;">
     </div>
-    <h3 class="text-xl font-semibold mb-3">Quick Registration</h3>
-    <p class="text-gray-400 mb-4">Register with your palm biometrics for secure and instant account creation.</p>
-    <a href="{{ url_for('register') }}" class="inline-flex items-center text-purple-400 hover:text-purple-300 font-medium group-hover:translate-x-1 transition-transform duration-300">
-      Get Started
-      <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-      </svg>
-    </a>
-  </div>
+    <div
+      style="position:absolute;inset:20px;border-radius:50%;border:1px dashed rgba(0, 229, 255, 0.15);animation:spinSlow 14s linear infinite reverse;">
+    </div>
+    <div
+      style="position:absolute;inset:40px;border-radius:50%;border:1px solid rgba(41, 98, 255, 0.2);animation:spinSlow 9s linear infinite;">
+    </div>
 
-  <!-- Transactions Card -->
-  <div class="group bg-gradient-to-br from-emerald-500/10 to-blue-500/10 rounded-2xl p-6 border border-emerald-500/20 hover:border-emerald-400/40 transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-emerald-500/20">
-    <div class="w-12 h-12 bg-gradient-to-r from-emerald-500 to-blue-500 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
-      <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
-      </svg>
+    <!-- Center palm icon -->
+    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
+      <div
+        style="background:linear-gradient(135deg, rgba(0, 229, 255, 0.1), rgba(41, 98, 255, 0.15)); border:1px solid rgba(0, 229, 255, 0.3); border-radius:50%; width:110px; height:110px; display:flex; align-items:center; justify-content:center; box-shadow:0 0 50px rgba(0, 229, 255, 0.15); backdrop-filter: blur(10px);">
+        <i class="fas fa-hand-sparkles"
+          style="font-size:48px; background:linear-gradient(135deg, var(--c-cyan), var(--c-blue)); -webkit-background-clip:text; -webkit-text-fill-color:transparent;"></i>
+      </div>
     </div>
-    <h3 class="text-xl font-semibold mb-3">Secure Transactions</h3>
-    <p class="text-gray-400 mb-4">Deposit, withdraw, and transfer funds with enterprise-grade security.</p>
-    <div class="flex space-x-2">
-      <a href="{{ url_for('deposit') }}" class="text-emerald-400 hover:text-emerald-300 text-sm font-medium">Deposit</a>
-      <a href="{{ url_for('withdraw') }}" class="text-emerald-400 hover:text-emerald-300 text-sm font-medium">Withdraw</a>
-      <a href="{{ url_for('transfer') }}" class="text-emerald-400 hover:text-emerald-300 text-sm font-medium">Transfer</a>
-    </div>
-  </div>
 
-  <!-- Balance & History Card -->
-  <div class="group bg-gradient-to-br from-amber-500/10 to-orange-500/10 rounded-2xl p-6 border border-amber-500/20 hover:border-amber-400/40 transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-amber-500/20 md:col-span-2 lg:col-span-1">
-    <div class="w-12 h-12 bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
-      <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-      </svg>
-    </div>
-    <h3 class="text-xl font-semibold mb-3">Track & Monitor</h3>
-    <p class="text-gray-400 mb-4">Check your balance and view detailed transaction history anytime.</p>
-    <div class="flex space-x-2">
-      <a href="{{ url_for('balance') }}" class="text-amber-400 hover:text-amber-300 text-sm font-medium">Balance</a>
-      <a href="{{ url_for('history') }}" class="text-amber-400 hover:text-amber-300 text-sm font-medium">History</a>
+    <!-- Orbiting dots -->
+    <div
+      style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:12px;height:12px;background:var(--c-cyan);border-radius:50%;box-shadow:0 0 12px var(--c-cyan);animation:orbit 6s linear infinite;transform-origin:50% 120px;">
     </div>
   </div>
 </div>
 
-<!-- Quick Start Guide -->
-<div class="bg-gradient-to-r from-slate-800/50 to-slate-700/50 rounded-2xl p-8 border border-white/10 backdrop-blur-sm">
-  <h3 class="text-2xl font-bold mb-6 text-center">Quick Start Guide</h3>
-  <div class="grid md:grid-cols-3 gap-6">
-    <div class="text-center">
-      <div class="w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4">
-        <span class="text-2xl font-bold">1</span>
-      </div>
-      <h4 class="font-semibold mb-2">Register Account</h4>
-      <p class="text-gray-400 text-sm">Create your account with biometric palm authentication</p>
-    </div>
-    <div class="text-center">
-      <div class="w-16 h-16 bg-gradient-to-r from-emerald-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
-        <span class="text-2xl font-bold">2</span>
-      </div>
-      <h4 class="font-semibold mb-2">Make Deposits</h4>
-      <p class="text-gray-400 text-sm">Add funds to your account securely</p>
-    </div>
-    <div class="text-center">
-      <div class="w-16 h-16 bg-gradient-to-r from-amber-500 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-4">
-        <span class="text-2xl font-bold">3</span>
-      </div>
-      <h4 class="font-semibold mb-2">Start Transacting</h4>
-      <p class="text-gray-400 text-sm">Transfer, withdraw, and manage your finances</p>
-    </div>
-  </div>
+<style>
+  @keyframes spinSlow {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes orbit {
+    to {
+      transform: rotate(360deg) translateX(-50%);
+    }
+  }
+</style>
+
+<!-- Feature cards grid -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:24px;margin-bottom:80px;">
+
+  <!-- Register -->
+  <a href="{{ url_for('register') }}" class="card feature-card"
+    style="text-decoration:none;display:block;padding:32px;">
+    <div class="icon-badge icon-badge-cyan"><i class="fas fa-user-plus"></i></div>
+    <h3 style="font-size:20px;font-weight:700;color:var(--c-text);margin-bottom:8px;">Create Account</h3>
+    <p style="font-size:15px;color:var(--c-muted);line-height:1.6;margin-bottom:24px;">Enroll your palm biometrics
+      securely in under 30 seconds.</p>
+    <span style="font-size:14px;color:var(--c-cyan);font-weight:600;display:inline-flex;align-items:center;gap:6px;">Get
+      Started <i class="fas fa-arrow-right fa-sm"></i></span>
+  </a>
+
+  <!-- Deposit -->
+  <a href="{{ url_for('deposit') }}" class="card feature-card" style="text-decoration:none;display:block;padding:32px;">
+    <div class="icon-badge icon-badge-green"><i class="fas fa-arrow-down"></i></div>
+    <h3 style="font-size:20px;font-weight:700;color:var(--c-text);margin-bottom:8px;">Add Funds</h3>
+    <p style="font-size:15px;color:var(--c-muted);line-height:1.6;margin-bottom:24px;">Top up your digital wallet
+      instantly using your palm.</p>
+    <span
+      style="font-size:14px;color:var(--c-green);font-weight:600;display:inline-flex;align-items:center;gap:6px;">Deposit
+      Now <i class="fas fa-arrow-right fa-sm"></i></span>
+  </a>
+
+  <!-- Withdraw -->
+  <a href="{{ url_for('withdraw') }}" class="card feature-card"
+    style="text-decoration:none;display:block;padding:32px;">
+    <div class="icon-badge icon-badge-red"><i class="fas fa-arrow-up"></i></div>
+    <h3 style="font-size:20px;font-weight:700;color:var(--c-text);margin-bottom:8px;">Withdraw Funds</h3>
+    <p style="font-size:15px;color:var(--c-muted);line-height:1.6;margin-bottom:24px;">Securely cash out verified by
+      your unique palm signature.</p>
+    <span
+      style="font-size:14px;color:var(--c-red);font-weight:600;display:inline-flex;align-items:center;gap:6px;">Withdraw
+      <i class="fas fa-arrow-right fa-sm"></i></span>
+  </a>
+
+  <!-- Transfer -->
+  <a href="{{ url_for('transfer') }}" class="card feature-card"
+    style="text-decoration:none;display:block;padding:32px;">
+    <div class="icon-badge icon-badge-violet"><i class="fas fa-exchange-alt"></i></div>
+    <h3 style="font-size:20px;font-weight:700;color:var(--c-text);margin-bottom:8px;">Send Money</h3>
+    <p style="font-size:15px;color:var(--c-muted);line-height:1.6;margin-bottom:24px;">Instant peer-to-peer transfers
+      with zero friction.</p>
+    <span
+      style="font-size:14px;color:var(--c-violet);font-weight:600;display:inline-flex;align-items:center;gap:6px;">Transfer
+      <i class="fas fa-arrow-right fa-sm"></i></span>
+  </a>
+
+  <!-- Balance -->
+  <a href="{{ url_for('balance') }}" class="card feature-card" style="text-decoration:none;display:block;padding:32px;">
+    <div class="icon-badge icon-badge-cyan"><i class="fas fa-wallet"></i></div>
+    <h3 style="font-size:20px;font-weight:700;color:var(--c-text);margin-bottom:8px;">Check Balance</h3>
+    <p style="font-size:15px;color:var(--c-muted);line-height:1.6;margin-bottom:24px;">View your real-time account
+      assets and available funds.</p>
+    <span
+      style="font-size:14px;color:var(--c-cyan);font-weight:600;display:inline-flex;align-items:center;gap:6px;">View
+      Balance <i class="fas fa-arrow-right fa-sm"></i></span>
+  </a>
+
+  <!-- History -->
+  <a href="{{ url_for('history') }}" class="card feature-card" style="text-decoration:none;display:block;padding:32px;">
+    <div class="icon-badge icon-badge-amber"><i class="fas fa-history"></i></div>
+    <h3 style="font-size:20px;font-weight:700;color:var(--c-text);margin-bottom:8px;">Transactions</h3>
+    <p style="font-size:15px;color:var(--c-muted);line-height:1.6;margin-bottom:24px;">Browse your full payment ledger
+      and spending history.</p>
+    <span
+      style="font-size:14px;color:var(--c-amber);font-weight:600;display:inline-flex;align-items:center;gap:6px;">View
+      History <i class="fas fa-arrow-right fa-sm"></i></span>
+  </a>
+
 </div>
 
-<!-- Important Tips -->
-<div class="mt-16 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-2xl p-8 border border-blue-500/20">
-  <h3 class="text-2xl font-bold mb-6 flex items-center">
-    <svg class="w-6 h-6 mr-3 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-    </svg>
-    Important Tips
-  </h3>
-  <div class="grid md:grid-cols-3 gap-6">
-    <div class="flex items-start space-x-3">
-      <div class="w-2 h-2 bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
+<!-- How it works -->
+<div class="card"
+  style="margin-bottom:40px; border:none; background:linear-gradient(135deg, var(--c-surface), var(--c-surface2));">
+  <div class="card-body" style="padding: 48px;">
+    <div style="text-align:center; margin-bottom: 40px;">
+      <h2 style="font-size:28px;font-weight:800;color:var(--c-text);">How PalmPay Works</h2>
+      <p style="color:var(--c-muted); margin-top: 8px;">The simplest way to manage your finance.</p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:40px; text-align:center;">
+      <!-- Step 1 -->
       <div>
-        <h4 class="font-semibold mb-1">PIN Security</h4>
-        <p class="text-gray-400 text-sm">PIN must be exactly 4 digits for security</p>
+        <div
+          style="width:64px;height:64px;background:rgba(0, 229, 255, 0.1);border:1px solid rgba(0, 229, 255, 0.2);border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--c-cyan);margin:0 auto 20px;">
+          <i class="fas fa-user-plus"></i>
+        </div>
+        <h4 style="font-size: 18px; font-weight:700; color:var(--c-text); margin-bottom:10px;">Create Profile</h4>
+        <p style="font-size:14px;color:var(--c-muted);line-height:1.6;">Sign up and scan your palm once to securely link
+          your physical identity to your account.</p>
       </div>
-    </div>
-    <div class="flex items-start space-x-3">
-      <div class="w-2 h-2 bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
+      <!-- Step 2 -->
       <div>
-        <h4 class="font-semibold mb-1">Palm Registration</h4>
-        <p class="text-gray-400 text-sm">Press <span class="bg-blue-500/20 px-1 rounded">s</span> to save, <span class="bg-blue-500/20 px-1 rounded">q</span> to cancel</p>
+        <div
+          style="width:64px;height:64px;background:rgba(124, 58, 237, 0.1);border:1px solid rgba(124, 58, 237, 0.2);border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--c-violet);margin:0 auto 20px;">
+          <i class="fas fa-hand-sparkles"></i>
+        </div>
+        <h4 style="font-size: 18px; font-weight:700; color:var(--c-text); margin-bottom:10px;">Scan to Authenticate</h4>
+        <p style="font-size:14px;color:var(--c-muted);line-height:1.6;">For any transaction, hold your palm to the
+          camera. It’s faster and significantly more secure than a password.</p>
       </div>
-    </div>
-    <div class="flex items-start space-x-3">
-      <div class="w-2 h-2 bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
+      <!-- Step 3 -->
       <div>
-        <h4 class="font-semibold mb-1">Account Validation</h4>
-        <p class="text-gray-400 text-sm">All operations validate account and PIN</p>
+        <div
+          style="width:64px;height:64px;background:rgba(0, 230, 118, 0.1);border:1px solid rgba(0, 230, 118, 0.2);border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--c-green);margin:0 auto 20px;">
+          <i class="fas fa-check-circle"></i>
+        </div>
+        <h4 style="font-size: 18px; font-weight:700; color:var(--c-text); margin-bottom:10px;">Transact Freely</h4>
+        <p style="font-size:14px;color:var(--c-muted);line-height:1.6;">Send and receive money seamlessly with absolute
+          peace of mind.</p>
       </div>
     </div>
   </div>
 </div>
+
+<!-- Quick tips -->
+<div class="card">
+  <div class="card-header" style="border-bottom: 1px solid var(--c-border); padding-bottom: 20px;">
+    <h2 style="font-size:20px;font-weight:700;display:flex;align-items:center;gap:12px;color:var(--c-text);">
+      <div
+        style="width:40px;height:40px;background:rgba(255, 171, 0, 0.1);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--c-amber);">
+        <i class="fas fa-lightbulb"></i>
+      </div>
+      Tips for Best Accuracy
+    </h2>
+  </div>
+  <div class="card-body">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:32px;">
+      <div style="display:flex;gap:16px;align-items:flex-start;">
+        <span
+          style="color:var(--c-cyan);font-size:20px;flex-shrink:0;background:rgba(0, 229, 255, 0.1);padding:10px;border-radius:10px;"><i
+            class="fas fa-sun"></i></span>
+        <div>
+          <h5 style="font-size: 16px; font-weight:600; color:var(--c-text); margin-bottom:6px;">Good Lighting</h5>
+          <p style="font-size:14px;color:var(--c-muted);line-height:1.5;">Ensure the area is well-lit so the camera can
+            capture high-contrast palm lines.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;align-items:flex-start;">
+        <span
+          style="color:var(--c-green);font-size:20px;flex-shrink:0;background:rgba(0, 230, 118, 0.1);padding:10px;border-radius:10px;"><i
+            class="fas fa-hand-paper"></i></span>
+        <div>
+          <h5 style="font-size: 16px; font-weight:600; color:var(--c-text); margin-bottom:6px;">Flat & Open Palm</h5>
+          <p style="font-size:14px;color:var(--c-muted);line-height:1.5;">Hold your hand flat towards the camera without
+            making a fist or angling.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;align-items:flex-start;">
+        <span
+          style="color:var(--c-violet);font-size:20px;flex-shrink:0;background:rgba(124, 58, 237, 0.1);padding:10px;border-radius:10px;"><i
+            class="fas fa-camera"></i></span>
+        <div>
+          <h5 style="font-size: 16px; font-weight:600; color:var(--c-text); margin-bottom:6px;">Camera Access</h5>
+          <p style="font-size:14px;color:var(--c-muted);line-height:1.5;">Ensure your browser has been granted
+            permission to access the webcam.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;align-items:flex-start;">
+        <span
+          style="color:var(--c-amber);font-size:20px;flex-shrink:0;background:rgba(255, 171, 0, 0.1);padding:10px;border-radius:10px;"><i
+            class="fas fa-lock"></i></span>
+        <div>
+          <h5 style="font-size: 16px; font-weight:600; color:var(--c-text); margin-bottom:6px;">PIN Security</h5>
+          <p style="font-size:14px;color:var(--c-muted);line-height:1.5;">Your 4-digit PIN is required alongside
+            biometric validation as a second factor.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}

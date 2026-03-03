@@ -1,0 +1,15 @@
+2026-03-01 12:44:50,725  INFO  127.0.0.1 - - [01/Mar/2026 12:44:50] "GET /deposit HTTP/1.1" 200 -
+2026-03-01 12:44:54,983  INFO  127.0.0.1 - - [01/Mar/2026 12:44:54] "GET /users HTTP/1.1" 200 -
+2026-03-01 12:45:05,348  INFO  127.0.0.1 - - [01/Mar/2026 12:45:05] "GET /deposit HTTP/1.1" 200 -
+2026-03-01 12:45:27,959  INFO  127.0.0.1 - - [01/Mar/2026 12:45:27] "POST /deposit HTTP/1.1" 200 -
+2026-03-01 12:45:57,119  INFO  127.0.0.1 - - [01/Mar/2026 12:45:57] "POST /deposit HTTP/1.1" 200 -
+2026-03-01 12:46:23,623  INFO  127.0.0.1 - - [01/Mar/2026 12:46:23] "POST /deposit HTTP/1.1" 200 -
+2026-03-01 12:55:48,640  INFO  Starting triplet fine-tuning...
+2026-03-01 12:56:58,970  INFO    Triplet epoch 5/30 — loss: 0.0000
+2026-03-01 12:58:01,387  INFO    Triplet epoch 10/30 — loss: 0.0000
+2026-03-01 12:59:03,989  INFO    Triplet epoch 15/30 — loss: 0.0000
+2026-03-01 13:00:05,520  INFO    Triplet epoch 20/30 — loss: 0.0000
+2026-03-01 13:01:05,943  INFO    Triplet epoch 25/30 — loss: 0.0000
+2026-03-01 13:02:16,531  INFO    Triplet epoch 30/30 — loss: 0.0000
+2026-03-01 13:02:16,587  WARNING  Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2026-03-01 13:14:12,369  INFO   * Detected change in '/Users/chamanpreetsingh/Desktop/PalmPay-main/palm_recognition.py', reloading

@@ -1,36 +1,82 @@
 {% extends 'base.html' %}
+{% block page_header %}
+<div class="eyebrow"><i class="fas fa-users"></i> Admin Panel</div>
+<h1>Registered Users</h1>
+<p class="subtitle">Biometric enrollment status and account overview for all registered users.</p>
+{% endblock %}
 {% block content %}
-<div class="bg-white/10 rounded-2xl p-6 shadow-lg">
-  <h2 class="text-2xl font-semibold mb-4">Registered Users</h2>
-  <div class="overflow-x-auto rounded-2xl">
-    <table class="min-w-full text-left">
-      <thead class="bg-white/20">
-        <tr>
-          <th class="px-4 py-3">ID</th>
-          <th class="px-4 py-3">Name</th>
-          <th class="px-4 py-3">Account</th>
-          <th class="px-4 py-3">Balance</th>
-          <th class="px-4 py-3">Palm</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-white/10">
-        {% for u in users %}
-        <tr class="hover:bg-white/10">
-          <td class="px-4 py-3">{{ u[0] }}</td>
-          <td class="px-4 py-3">{{ u[1] }}</td>
-          <td class="px-4 py-3">{{ u[2] }}</td>
-          <td class="px-4 py-3">₹ {{ '%.2f'|format(u[3]) }}</td>
-          <td class="px-4 py-3">
-            {% if u[4] %}
-              <img class="w-24 h-16 object-cover rounded-xl" src="data:image/png;base64,{{ u[4] }}" alt="hand">
-            {% else %}
-              <span class="opacity-75">No image</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;flex-wrap:wrap;gap:16px;">
+  <div style="display:flex;gap:12px;flex-wrap:wrap;">
+    <span class="stat-pill stat-pill-cyan"><i class="fas fa-users" style="margin-right:4px;"></i> {{ users|length }}
+      Active Users</span>
+    <span class="stat-pill stat-pill-green"><i class="fas fa-shield-check" style="margin-right:4px;"></i> 100% Biometric
+      Enrolled</span>
   </div>
+  <a href="{{ url_for('register') }}" class="btn"
+    style="background:linear-gradient(135deg, var(--c-cyan), var(--c-blue)); color:#000; font-weight:700; padding:12px 24px; font-size:14px; display:inline-flex; align-items:center; gap:8px;">
+    <i class="fas fa-user-plus"></i> Add New User
+  </a>
 </div>
+
+{% if users %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:24px;">
+  {% for u in users %}
+  <div class="card feature-card"
+    style="padding:24px; background:linear-gradient(135deg, rgba(255,255,255,0.02), transparent); border: 1px solid var(--c-border2);">
+    <!-- Palm image or placeholder -->
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;">
+      {% if u[4] %}
+      <img src="data:image/jpeg;base64,{{ u[4] }}" alt="Palm of {{ u[1] }}"
+        style="width:64px;height:64px;border-radius:16px;object-fit:cover;border:2px solid rgba(0, 229, 255, 0.3);flex-shrink:0;box-shadow: 0 4px 12px rgba(0, 229, 255, 0.1);">
+      {% else %}
+      <div
+        style="width:64px;height:64px;border-radius:16px;background:rgba(0, 229, 255, 0.05);border:1px solid rgba(0, 229, 255, 0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-hand-sparkles" style="font-size:24px;color:var(--c-cyan);"></i>
+      </div>
+      {% endif %}
+      <div style="min-width:0;">
+        <p
+          style="font-weight:700;font-size:16px;color:var(--c-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px;">
+          {{ u[1] }}</p>
+        <p style="font-size:13px;color:var(--c-muted);" class="mono">{{ u[2] }}</p>
+      </div>
+    </div>
+
+    <div
+      style="border-top:1px solid var(--c-border);padding-top:20px;display:flex;justify-content:space-between;align-items:flex-end;">
+      <div>
+        <p
+          style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--c-muted);margin-bottom:6px;font-weight:600;">
+          Balance</p>
+        <p style="font-size:24px;font-weight:800;color:var(--c-cyan);letter-spacing:-0.5px;">₹{{ '%.2f'|format(u[3]) }}
+        </p>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+        <span class="stat-pill stat-pill-green" style="font-size:11px;padding:4px 10px;"><i class="fas fa-fingerprint"
+            style="font-size:10px;"></i> Biometric OK</span>
+        <span style="font-size:12px;color:var(--c-muted);" class="mono">ID: {{ u[0] }}</span>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="card"
+  style="text-align:center;padding:80px 40px;background:linear-gradient(135deg, var(--c-surface), var(--c-surface2));">
+  <div class="icon-badge"
+    style="margin:0 auto 24px;width:80px;height:80px;font-size:32px;border-radius:24px;background:rgba(0, 229, 255, 0.1);color:var(--c-cyan);">
+    <i class="fas fa-users-slash"></i>
+  </div>
+  <h3 style="font-size:24px;font-weight:800;color:var(--c-text);margin-bottom:12px;">No Users Found</h3>
+  <p style="color:var(--c-muted);font-size:15px;line-height:1.6;max-width:400px;margin:0 auto 32px;">The system
+    currently has no registered user accounts. Start by enrolling the first user's biometric data.</p>
+  <a href="{{ url_for('register') }}" class="btn"
+    style="background:linear-gradient(135deg, var(--c-cyan), var(--c-blue));color:#000;font-weight:700;padding:14px 28px;font-size:15px;display:inline-flex;align-items:center;gap:8px;">
+    <i class="fas fa-user-plus"></i> Register First User
+  </a>
+</div>
+{% endif %}
+
 {% endblock %}

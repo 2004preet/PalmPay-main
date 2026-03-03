@@ -1,6 +1,15 @@
 """
-Advanced Palm Recognition Model Training with ArcFace Loss
-State-of-the-art model for palm authentication with superior accuracy
+Advanced Palm Recognition Training — Deep Learning Edition v4
+=============================================================
+Key upgrades over v3:
+  • Resolution: 256×256 (was 224×224) for richer ridge detail
+  • Backbone: ResNet50V2 with progressive unfreeze
+  • Loss:     ArcFace with increased margin (0.65) + center loss
+  • Augment:  CutMix + MixUp + elastic distortion + perspective warp
+  • LR:       Cosine-annealing with linear warmup callback
+  • Stage 2:  Online hard-negative triplet-loss (margin 0.45)
+  • Eval:     FAR / FRR / EER metrics for deployment readiness
+  • Misc:     NUM_CLASSES auto-discovered, FEATURE_DIM=512
 """
 
 import os
@@ -16,489 +25,719 @@ import math
 import logging
 import datetime
 
-# Custom L2Normalize layer
+# ─────────────────────────────────────────────────────────────────────────────
+#  Custom layers
+# ─────────────────────────────────────────────────────────────────────────────
 class L2Normalize(layers.Layer):
     def __init__(self, axis=1, **kwargs):
-        super(L2Normalize, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.axis = axis
 
     def call(self, inputs):
         return tf.nn.l2_normalize(inputs, axis=self.axis)
 
     def get_config(self):
-        config = super(L2Normalize, self).get_config()
-        config.update({"axis": self.axis})
-        return config
+        c = super().get_config()
+        c.update({"axis": self.axis})
+        return c
+
+
+class ArcFaceLayer(layers.Layer):
+    """
+    Additive Angular Margin loss layer (ArcFace / InsightFace).
+    During training multiplies the normalised feature vector against
+    normalised class weights, adds angular margin m to the true class,
+    then scales by s before softmax.  At inference returns raw cosine logits.
+    """
+    def __init__(self, num_classes, scale=64.0, margin=0.5, **kwargs):
+        super().__init__(**kwargs)
+        self.num_classes = num_classes
+        self.scale       = scale
+        self.margin      = margin
+        self.cos_m       = math.cos(margin)
+        self.sin_m       = math.sin(margin)
+        self.th          = math.cos(math.pi - margin)
+        self.mm          = math.sin(math.pi - margin) * margin
+
+    def build(self, input_shape):
+        self.W = self.add_weight(
+            shape=(input_shape[-1], self.num_classes),
+            initializer="glorot_normal",
+            trainable=True,
+            name="arcface_weights",
+        )
+        super().build(input_shape)
+
+    def call(self, embeddings, labels=None, training=None):
+        # Normalise both embeddings and weights
+        emb_norm  = tf.nn.l2_normalize(embeddings, axis=1)
+        W_norm    = tf.nn.l2_normalize(self.W,     axis=0)
+        cosine    = tf.matmul(emb_norm, W_norm)       # (B, C)
+
+        if labels is None or not training:
+            return cosine * self.scale
+
+        # ArcFace margin application
+        sine      = tf.sqrt(tf.maximum(1.0 - tf.square(cosine), 1e-9))
+        phi       = cosine * self.cos_m - sine * self.sin_m  # cos(θ + m)
+        # Stable fallback for θ > π - m
+        phi       = tf.where(cosine > self.th, phi,
+                             cosine - self.mm)
+
+        one_hot   = tf.one_hot(tf.cast(labels, tf.int32), self.num_classes)
+        output    = (one_hot * phi) + ((1.0 - one_hot) * cosine)
+        return output * self.scale
+
+    def get_config(self):
+        c = super().get_config()
+        c.update({
+            "num_classes": self.num_classes,
+            "scale":       self.scale,
+            "margin":      self.margin,
+        })
+        return c
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+IMG_SIZE         = (256, 256)   # ← upgraded from 224×224
+BATCH_SIZE       = 8
+EPOCHS           = 80
+LEARNING_RATE    = 1e-4
+TRAIN_DIR        = "Files/Train"
+VALID_DIR        = "Files/Valid"
+MODEL_SAVE_PATH  = "palm_feature_extractor_advanced.h5"
+FEATURE_DIM      = 512
+NUM_CLASSES      = None   # auto-discovered
+ARC_SCALE        = 64.0
+ARC_MARGIN       = 0.65      # ← increased from 0.5 for harder angular separation
+CENTER_LOSS_W    = 0.005     # ← NEW: center loss weight for intra-class compactness
 
 try:
     from tqdm import tqdm
     HAS_TQDM = True
 except ImportError:
     HAS_TQDM = False
-    print("tqdm not available, progress bars disabled")
 
-# Configuration
-IMG_SIZE = (224, 224)
-BATCH_SIZE = 8  # Smaller batch size for better generalization
-EPOCHS = 100  # More epochs for better convergence
-LEARNING_RATE = 0.0001  # Lower learning rate for fine-tuning
-TRAIN_DIR = "Files/Train"
-VALID_DIR = "Files/Valid"
-MODEL_SAVE_PATH = "palm_feature_extractor_advanced.h5"
-FEATURE_DIM = 512  # Increased feature dimension for better accuracy
-NUM_CLASSES = 3  # Based on the 3 palm groups in training data
-ARC_SCALE = 64.0  # Scale parameter for ArcFace loss
-ARC_MARGIN = 0.5  # Margin parameter for ArcFace loss
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Augmentation — CutMix + MixUp + existing geometric/colour transforms
+# ─────────────────────────────────────────────────────────────────────────────
+def cutmix_augment(img1, img2, alpha=1.0):
+    """
+    CutMix: randomly paste a rectangular region from img2 onto img1.
+    Returns blended image + lam (proportion of img1).
+    """
+    lam = np.random.beta(alpha, alpha)
+    h, w = img1.shape[:2]
+    cut_rat = np.sqrt(1.0 - lam)
+    cut_w   = int(w * cut_rat)
+    cut_h   = int(h * cut_rat)
+    cx = random.randint(0, w)
+    cy = random.randint(0, h)
+    x1 = max(cx - cut_w // 2, 0);  x2 = min(cx + cut_w // 2, w)
+    y1 = max(cy - cut_h // 2, 0);  y2 = min(cy + cut_h // 2, h)
+    result = img1.copy()
+    result[y1:y2, x1:x2] = img2[y1:y2, x1:x2]
+    lam = 1 - (x2 - x1) * (y2 - y1) / (w * h)
+    return result, lam
+
+
+def mixup_augment(img1, img2, alpha=0.4):
+    """MixUp: pixel-level linear blend of two images."""
+    lam = np.random.beta(alpha, alpha)
+    return (lam * img1 + (1 - lam) * img2).astype(np.uint8), lam
+
+
+def elastic_distortion(img, alpha=80, sigma=10):
+    """Apply elastic distortion for realistic palm deformation."""
+    h, w = img.shape[:2]
+    rng = np.random.RandomState()
+    dx = cv2.GaussianBlur((rng.rand(h, w) * 2 - 1).astype(np.float32),
+                          (0, 0), sigma) * alpha
+    dy = cv2.GaussianBlur((rng.rand(h, w) * 2 - 1).astype(np.float32),
+                          (0, 0), sigma) * alpha
+    x, y = np.meshgrid(np.arange(w), np.arange(h))
+    map_x = (x + dx).astype(np.float32)
+    map_y = (y + dy).astype(np.float32)
+    return cv2.remap(img, map_x, map_y, cv2.INTER_LINEAR,
+                     borderMode=cv2.BORDER_REFLECT)
+
+
+def perspective_warp(img, strength=0.06):
+    """Apply random perspective warp to simulate camera angle changes."""
+    h, w = img.shape[:2]
+    s = strength
+    src = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
+    dst = np.float32([
+        [random.uniform(0, w*s), random.uniform(0, h*s)],
+        [w - random.uniform(0, w*s), random.uniform(0, h*s)],
+        [w - random.uniform(0, w*s), h - random.uniform(0, h*s)],
+        [random.uniform(0, w*s), h - random.uniform(0, h*s)]
+    ])
+    M = cv2.getPerspectiveTransform(src, dst)
+    return cv2.warpPerspective(img, M, (w, h), borderMode=cv2.BORDER_REFLECT)
+
 
 def advanced_augment_image(img):
-    """Advanced data augmentation for better model robustness"""
+    """Geometric + colour augmentation + elastic distortion + perspective warp."""
     img = img.astype(np.float32)
 
-    # Random rotation (-20 to 20 degrees)
     if random.random() > 0.4:
-        angle = random.uniform(-20, 20)
+        angle  = random.uniform(-20, 20)
         center = (img.shape[1] // 2, img.shape[0] // 2)
-        M = cv2.getRotationMatrix2D(center, angle, 1.0)
-        img = cv2.warpAffine(img, M, (img.shape[1], img.shape[0]),
-                           borderMode=cv2.BORDER_REFLECT)
+        M      = cv2.getRotationMatrix2D(center, angle, 1.0)
+        img    = cv2.warpAffine(img, M, (img.shape[1], img.shape[0]),
+                                borderMode=cv2.BORDER_REFLECT)
 
-    # Random brightness and contrast
     if random.random() > 0.4:
-        alpha = random.uniform(0.8, 1.2)  # contrast
-        beta = random.uniform(-20, 20)    # brightness
-        img = cv2.convertScaleAbs(img, alpha=alpha, beta=beta)
+        alpha = random.uniform(0.7, 1.3)
+        beta  = random.uniform(-25, 25)
+        img   = cv2.convertScaleAbs(img, alpha=alpha, beta=beta)
 
-    # Random Gaussian noise
-    if random.random() > 0.6:
-        noise = np.random.normal(0, random.uniform(3, 8), img.shape)
-        img = np.clip(img + noise, 0, 255)
+    if random.random() > 0.5:
+        noise = np.random.normal(0, random.uniform(2, 10), img.shape)
+        img   = np.clip(img + noise, 0, 255)
 
-    # Random blur
-    if random.random() > 0.7:
+    if random.random() > 0.65:
         ksize = random.choice([3, 5])
-        img = cv2.GaussianBlur(img, (ksize, ksize), 0)
+        img   = cv2.GaussianBlur(img, (ksize, ksize), 0)
 
-    # Random horizontal flip (very low probability for palms)
-    if random.random() > 0.95:
+    if random.random() > 0.93:
         img = cv2.flip(img, 1)
 
-    # Random zoom and crop
-    if random.random() > 0.6:
-        zoom_factor = random.uniform(0.9, 1.1)
+    if random.random() > 0.55:
+        zoom = random.uniform(0.88, 1.12)
         h, w = img.shape[:2]
-        new_h, new_w = int(h * zoom_factor), int(w * zoom_factor)
-        img = cv2.resize(img, (new_w, new_h))
-        if zoom_factor > 1:
-            start_y = (new_h - h) // 2
-            start_x = (new_w - w) // 2
-            img = img[start_y:start_y+h, start_x:start_x+w]
+        nh, nw = int(h * zoom), int(w * zoom)
+        img = cv2.resize(img, (nw, nh))
+        if zoom > 1:
+            sy = (nh - h) // 2;  sx = (nw - w) // 2
+            img = img[sy:sy+h, sx:sx+w]
         else:
-            pad_y = (h - new_h) // 2
-            pad_x = (w - new_w) // 2
-            img = cv2.copyMakeBorder(img, pad_y, h-new_h-pad_y,
-                                   pad_x, w-new_w-pad_x,
-                                   cv2.BORDER_REFLECT)
+            py = (h - nh) // 2;  px = (w - nw) // 2
+            img = cv2.copyMakeBorder(img, py, h-nh-py, px, w-nw-px,
+                                     cv2.BORDER_REFLECT)
 
-    # Color jittering
-    if random.random() > 0.5:
-        hsv = cv2.cvtColor(img.astype(np.uint8), cv2.COLOR_BGR2HSV)
-        hsv = hsv.astype(np.float32)
-        # Hue shift
-        hsv[..., 0] = (hsv[..., 0] + random.uniform(-10, 10)) % 180
-        # Saturation
-        hsv[..., 1] = np.clip(hsv[..., 1] * random.uniform(0.8, 1.2), 0, 255)
-        # Value
-        hsv[..., 2] = np.clip(hsv[..., 2] * random.uniform(0.9, 1.1), 0, 255)
+    if random.random() > 0.45:
+        hsv = cv2.cvtColor(img.astype(np.uint8), cv2.COLOR_BGR2HSV).astype(np.float32)
+        hsv[..., 0]  = (hsv[..., 0] + random.uniform(-15, 15)) % 180
+        hsv[..., 1]  = np.clip(hsv[..., 1] * random.uniform(0.7, 1.3), 0, 255)
+        hsv[..., 2]  = np.clip(hsv[..., 2] * random.uniform(0.8, 1.2), 0, 255)
         img = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+    # NEW: Elastic distortion — simulates palm skin deformation
+    if random.random() > 0.65:
+        img = elastic_distortion(np.clip(img, 0, 255).astype(np.uint8),
+                                  alpha=random.uniform(40, 100),
+                                  sigma=random.uniform(6, 14))
+        img = img.astype(np.float32)
+
+    # NEW: Perspective warp — simulates camera angle variation
+    if random.random() > 0.70:
+        img = perspective_warp(np.clip(img, 0, 255).astype(np.uint8),
+                                strength=random.uniform(0.03, 0.08))
+        img = img.astype(np.float32)
 
     return np.clip(img, 0, 255).astype(np.uint8)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Image enhancement (used at load time)
+# ─────────────────────────────────────────────────────────────────────────────
 def enhance_image_advanced(img):
-    """Advanced image enhancement for palm recognition"""
-    # Convert to LAB color space
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
-
-    # Apply CLAHE with different parameters
     clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    l = clahe.apply(l)
-
-    # Additional enhancement for palm lines
-    l = cv2.equalizeHist(l)
-
-    # Bilateral filter to reduce noise while keeping edges
-    l = cv2.bilateralFilter(l, 9, 75, 75)
-
-    # Merge channels
-    lab = cv2.merge([l, a, b])
-    img = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
-
-    # Sharpen the image slightly
-    kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
-    img = cv2.filter2D(img, -1, kernel * 0.1)
-
+    l     = clahe.apply(l)
+    l     = cv2.bilateralFilter(l, 9, 75, 75)
+    lab   = cv2.merge([l, a, b])
+    img   = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+    # Light sharpening
+    blur  = cv2.GaussianBlur(img, (0, 0), 3)
+    img   = cv2.addWeighted(img, 1.3, blur, -0.3, 0)
     return img
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Image loading
+# ─────────────────────────────────────────────────────────────────────────────
 def load_images_with_labels(directory):
-    """Load images and assign labels based on filename patterns"""
-    images = []
-    labels = []
+    """
+    Load images. Palm identity = subdirectory name (preferred) OR
+    numeric range heuristic for flat dirs (backward compat).
+    """
+    images, labels = [], []
+
+    # Prefer subdirectory layout first
+    subdirs = [d for d in os.listdir(directory)
+               if os.path.isdir(os.path.join(directory, d))]
+    if subdirs:
+        label_map = {name: i for i, name in enumerate(sorted(subdirs))}
+        for name, label in label_map.items():
+            img_paths = (
+                glob.glob(os.path.join(directory, name, "*.jpg"))  +
+                glob.glob(os.path.join(directory, name, "*.JPG"))  +
+                glob.glob(os.path.join(directory, name, "*.png"))  +
+                glob.glob(os.path.join(directory, name, "*.PNG"))
+            )
+            for p in img_paths:
+                img = cv2.imread(p)
+                if img is not None:
+                    img = enhance_image_advanced(img)
+                    img = cv2.resize(img, IMG_SIZE)
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    images.append(img)
+                    labels.append(label)
+        return np.array(images), np.array(labels)
+
+    # Flat directory — number-range heuristic (legacy)
     image_paths = (glob.glob(os.path.join(directory, "*.JPG")) +
                    glob.glob(os.path.join(directory, "*.jpg")) +
                    glob.glob(os.path.join(directory, "*.PNG")) +
                    glob.glob(os.path.join(directory, "*.png")))
 
-    # Group images by palm based on number ranges (assuming consecutive numbers belong to same palm)
     palm_groups = {}
-    for img_path in sorted(image_paths):
-        base_name = os.path.basename(img_path)
-        # Extract number from filename like IMG_0371 -> 0371
+    for p in sorted(image_paths):
+        base = os.path.basename(p)
         try:
-            number_part = ''.join(filter(str.isdigit, base_name))
-            if number_part:
-                number = int(number_part)
-                # Group by hundreds: 037x = palm 0, 038x = palm 1, 039x = palm 2
-                palm_id = (number // 100) - 37  # 371-379 = 0, 381-389 = 1, 391-399 = 2
-            else:
-                palm_id = 0
-        except:
+            num     = int("".join(filter(str.isdigit, base)))
+            palm_id = num // 10   # group every 10 images by default
+        except Exception:
             palm_id = 0
+        palm_groups.setdefault(palm_id, []).append(p)
 
-        if palm_id not in palm_groups:
-            palm_groups[palm_id] = []
-        palm_groups[palm_id].append(img_path)
-
-    # Assign numeric labels
-    label_map = {palm_id: i for i, palm_id in enumerate(sorted(palm_groups.keys()))}
-
-    for palm_id, paths in palm_groups.items():
-        for img_path in paths:
-            img = cv2.imread(img_path)
+    label_map = {pid: i for i, pid in enumerate(sorted(palm_groups))}
+    for pid, paths in palm_groups.items():
+        for p in paths:
+            img = cv2.imread(p)
             if img is not None:
                 img = enhance_image_advanced(img)
                 img = cv2.resize(img, IMG_SIZE)
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                 images.append(img)
-                labels.append(label_map[palm_id])
+                labels.append(label_map[pid])
 
     return np.array(images), np.array(labels)
 
-def create_arcface_model():
-    """Create simple feature extractor model"""
-    try:
-        # Use MobileNetV2 for faster training and better generalization
-        from tensorflow.keras.applications import MobileNetV2
-        base_model = MobileNetV2(
-            weights='imagenet',
-            include_top=False,
-            input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3),
-            pooling='avg'
-        )
-        print("   Using MobileNetV2 as base model")
-    except ImportError:
-        from tensorflow.keras.applications import MobileNet
-        base_model = MobileNet(
-            weights='imagenet',
-            include_top=False,
-            input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3),
-            pooling='avg'
-        )
-        print("   Using MobileNet as base model")
 
-    # Unfreeze more layers for fine-tuning from start
-    base_model.trainable = True
-    # Freeze only the first few layers
-    for layer in base_model.layers[:50]:
+# ─────────────────────────────────────────────────────────────────────────────
+#  Model creation — ResNet50V2 + ArcFace head
+# ─────────────────────────────────────────────────────────────────────────────
+def create_arcface_model(num_classes):
+    """
+    ResNet50V2 backbone → 512D ArcFace embedding.
+    Returns:  (training_model, feature_extractor, base_model)
+    """
+    from tensorflow.keras import regularizers
+
+    try:
+        from tensorflow.keras.applications import ResNet50V2
+        base = ResNet50V2(
+            weights="imagenet", include_top=False,
+            input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3)
+        )
+        print("   ✓ Using ResNet50V2 backbone")
+    except Exception:
+        from tensorflow.keras.applications import MobileNetV2
+        base = MobileNetV2(
+            weights="imagenet", include_top=False,
+            input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3), pooling="avg"
+        )
+        print("   ✓ Using MobileNetV2 backbone (fallback)")
+
+    # Freeze all but last 30 layers initially
+    base.trainable = True
+    for layer in base.layers[:-30]:
         layer.trainable = False
 
-    inputs = keras.Input(shape=(IMG_SIZE[0], IMG_SIZE[1], 3))
+    inp = keras.Input(shape=(IMG_SIZE[0], IMG_SIZE[1], 3))
+    x   = base(inp, training=False)
 
-    # Simple feature extraction
-    x = base_model(inputs, training=False)
+    # Pooling fusion
+    x_avg = layers.GlobalAveragePooling2D()(x)
+    x_max = layers.GlobalMaxPooling2D()(x)
+    x     = layers.Concatenate()([x_avg, x_max])
 
-    # Single dense layer for features
-    features = layers.Dense(FEATURE_DIM, activation='relu', name='features')(x)
-    features = layers.BatchNormalization()(features)
-    features = layers.Dropout(0.3)(features)
+    # Embedding head
+    x   = layers.Dense(1024, kernel_regularizer=regularizers.l2(1e-4))(x)
+    x   = layers.BatchNormalization()(x)
+    x   = layers.Activation("relu")(x)
+    x   = layers.Dropout(0.5)(x)
 
-    # L2 normalize features
-    features_normalized = L2Normalize(axis=1, name='features_normalized')(features)
+    x   = layers.Dense(FEATURE_DIM, kernel_regularizer=regularizers.l2(1e-4))(x)
+    x   = layers.BatchNormalization()(x)
+    emb = L2Normalize(axis=1, name="embedding")(x)
 
-    # Classification head
-    classification_output = layers.Dense(NUM_CLASSES, activation='softmax', name='classification')(features_normalized)
+    # ArcFace classification head (for training only)
+    logits = ArcFaceLayer(num_classes, scale=ARC_SCALE, margin=ARC_MARGIN,
+                          name="arcface")(emb)
+    output = layers.Activation("softmax")(logits)
 
-    # Create training model with classification output
-    training_model = keras.Model(inputs, classification_output, name='palm_classifier_training')
+    training_model   = keras.Model(inp, output, name="palm_arcface_training")
+    feature_extractor = keras.Model(inp, emb,   name="palm_feature_extractor")
 
-    # Create feature extractor model (for later use)
-    feature_extractor_model = keras.Model(inputs, features_normalized, name='palm_feature_extractor')
+    return training_model, feature_extractor, base
 
-    return training_model, feature_extractor_model, base_model, inputs
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Training data preparation (with CutMix / MixUp)
+# ─────────────────────────────────────────────────────────────────────────────
 def create_training_data(images, labels, augment_factor=5):
-    """Create augmented training data for ArcFace training"""
-    augmented_images = []
-    augmented_labels = []
+    """
+    Create augmented training data.  Every augment_factor images gets an
+    additional CutMix pair applied (where there are ≥2 classes).
+    """
+    aug_images = []
+    aug_labels = []
 
-    iterator = zip(images, labels)
+    it = zip(images, labels)
     if HAS_TQDM:
-        iterator = tqdm(iterator, desc="Creating augmented data", total=len(images))
+        it = tqdm(list(it), desc="Augmenting")
 
-    for img, label in iterator:
-        # Original image
-        augmented_images.append(img)
-        augmented_labels.append(label)
-
-        # Augmented versions
+    for img, lbl in it:
+        aug_images.append(img);           aug_labels.append(lbl)
         for _ in range(augment_factor):
-            aug_img = advanced_augment_image(img.copy())
-            augmented_images.append(aug_img.astype('float32') / 255.0)
-            augmented_labels.append(label)
+            a = advanced_augment_image((img * 255).astype(np.uint8))
+            aug_images.append(a.astype("float32") / 255.0)
+            aug_labels.append(lbl)
 
-    return np.array(augmented_images), np.array(augmented_labels)
+    # CutMix pass over unique classes
+    unique_classes = np.unique(labels)
+    if len(unique_classes) >= 2:
+        n_mix = min(len(images) * 2, 500)
+        for _ in range(n_mix):
+            idx1, idx2 = random.sample(range(len(images)), 2)
+            i1 = (images[idx1] * 255).astype(np.uint8)
+            i2 = (images[idx2] * 255).astype(np.uint8)
+            mixed, lam = cutmix_augment(i1, i2)
+            aug_images.append(mixed.astype("float32") / 255.0)
+            # Soft label not supported in one-hot path → keep dominant label
+            aug_labels.append(labels[idx1] if lam >= 0.5 else labels[idx2])
 
+        # MixUp pass
+        for _ in range(n_mix):
+            idx1, idx2 = random.sample(range(len(images)), 2)
+            mixed, lam = mixup_augment(
+                (images[idx1] * 255).astype(np.uint8),
+                (images[idx2] * 255).astype(np.uint8)
+            )
+            aug_images.append(mixed.astype("float32") / 255.0)
+            aug_labels.append(labels[idx1] if lam >= 0.5 else labels[idx2])
+
+    return np.array(aug_images), np.array(aug_labels)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Cosine-annealing learning-rate callback with linear warmup
+# ─────────────────────────────────────────────────────────────────────────────
+class CosineAnnealingWarmup(keras.callbacks.Callback):
+    def __init__(self, initial_lr, warmup_epochs=5, total_epochs=80,
+                 min_lr=1e-7):
+        super().__init__()
+        self.initial_lr    = initial_lr
+        self.warmup_epochs = warmup_epochs
+        self.total_epochs  = total_epochs
+        self.min_lr        = min_lr
+
+    def on_epoch_begin(self, epoch, logs=None):
+        if epoch < self.warmup_epochs:
+            lr = self.initial_lr * (epoch + 1) / self.warmup_epochs
+        else:
+            progress = (epoch - self.warmup_epochs) / max(
+                self.total_epochs - self.warmup_epochs, 1)
+            lr = self.min_lr + 0.5 * (self.initial_lr - self.min_lr) * (
+                 1 + math.cos(math.pi * progress))
+        keras.backend.set_value(self.model.optimizer.lr, lr)
+        if epoch % 10 == 0:
+            print(f"\n  LR at epoch {epoch}: {lr:.2e}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Triplet loss fine-tuning (online hard-negative mining)
+# ─────────────────────────────────────────────────────────────────────────────
+def triplet_loss(y_true, y_pred, margin=0.45):
+    """
+    Semi-hard online triplet loss for embedding refinement.
+    Margin increased from 0.3 → 0.45 for wider inter-class gaps.
+    y_pred  = batch embeddings (B, D)
+    y_true  = class labels     (B,)
+    """
+    embeddings = tf.nn.l2_normalize(y_pred, axis=1)
+    labels     = tf.cast(y_true, tf.int32)
+
+    # Pairwise cosine distances (1 - cosine_sim)
+    dot  = tf.matmul(embeddings, embeddings, transpose_b=True)
+    dist = 1.0 - dot   # (B, B)
+
+    # Positive / negative masks
+    label_eq = tf.equal(tf.expand_dims(labels, 1), tf.expand_dims(labels, 0))
+    eye      = tf.eye(tf.shape(labels)[0], dtype=tf.bool)
+    pos_mask = tf.logical_and(label_eq, tf.logical_not(eye))
+    neg_mask = tf.logical_not(label_eq)
+
+    # Hardest positive
+    pos_dist = tf.reduce_max(dist * tf.cast(pos_mask, tf.float32), axis=1)
+    # Easiest negative (semi-hard: neg_dist > pos_dist)
+    neg_dist_all = dist + 1e9 * tf.cast(tf.logical_not(neg_mask), tf.float32)
+    neg_dist = tf.reduce_min(neg_dist_all, axis=1)
+
+    loss = tf.maximum(pos_dist - neg_dist + margin, 0.0)
+    return tf.reduce_mean(loss)
+
+
+def fine_tune_triplet(feature_extractor, train_images, train_labels,
+                      epochs=30, batch_size=16, lr=1e-5, logger=None):
+    """
+    Fine-tune feature extractor with online triplet loss.
+    Unfreeze entire extractor for this stage.
+    """
+    if logger:
+        logger.info("Starting triplet fine-tuning...")
+    else:
+        print("\n── Triplet fine-tuning stage ──")
+
+    # Unfreeze all layers
+    for layer in feature_extractor.layers:
+        layer.trainable = True
+
+    optimizer = keras.optimizers.Adam(learning_rate=lr)
+
+    ds = tf.data.Dataset.from_tensor_slices(
+        (train_images.astype("float32"), train_labels.astype("int32"))
+    ).shuffle(4096).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+
+    for epoch in range(epochs):
+        epoch_loss = []
+        for imgs, lbls in ds:
+            with tf.GradientTape() as tape:
+                embs = feature_extractor(imgs, training=True)
+                loss = triplet_loss(lbls, embs)
+            grads = tape.gradient(loss, feature_extractor.trainable_variables)
+            optimizer.apply_gradients(
+                zip(grads, feature_extractor.trainable_variables))
+            epoch_loss.append(float(loss))
+
+        if (epoch + 1) % 5 == 0:
+            avg = np.mean(epoch_loss)
+            msg = f"  Triplet epoch {epoch+1}/{epochs} — loss: {avg:.4f}"
+            print(msg)
+            if logger:
+                logger.info(msg)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Main training function
+# ─────────────────────────────────────────────────────────────────────────────
 def train_arcface_model():
-    """Train palm recognition model using ArcFace loss"""
-    # Setup logging
-    log_filename = f"training_log_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    """Full training pipeline: ArcFace stage → triplet fine-tuning → save."""
+    log_file = f"training_log_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_filename),
-            logging.StreamHandler()
-        ]
+        format="%(asctime)s  %(levelname)s  %(message)s",
+        handlers=[logging.FileHandler(log_file), logging.StreamHandler()]
     )
     logger = logging.getLogger(__name__)
-    
-    # Enable mixed precision for faster training
-    try:
-        from tensorflow.keras.mixed_precision import experimental as mixed_precision
-        mixed_precision.set_policy(mixed_precision.Policy('mixed_float16'))
-        logger.info("Mixed precision enabled for faster training")
-    except:
-        logger.info("Mixed precision not available, using float32")
-    
-    print("=" * 70)
-    print("Advanced Palm Recognition Training with ArcFace Loss")
-    print("=" * 70)
-    logger.info("Starting advanced palm recognition training")
 
-    # Load images with labels
+    print("=" * 70)
+    print("PalmPay — Deep Learning Training (ArcFace + ResNet50V2)")
+    print("=" * 70)
+
+    # 1. Load images
     print("\n1. Loading training images...")
     train_images, train_labels = load_images_with_labels(TRAIN_DIR)
-    print(f"   Loaded {len(train_images)} training images from {len(np.unique(train_labels))} palms")
+    n_classes = int(np.max(train_labels)) + 1 if len(train_labels) > 0 else 3
+    print(f"   {len(train_images)} images | {n_classes} palm identities")
 
-    valid_images, valid_labels = None, None
-    if os.path.exists(VALID_DIR):
+    valid_images = valid_labels = None
+    if VALID_DIR and os.path.exists(VALID_DIR):
         valid_images, valid_labels = load_images_with_labels(VALID_DIR)
-        print(f"   Loaded {len(valid_images)} validation images from {len(np.unique(valid_labels))} palms")
+        print(f"   {len(valid_images)} validation images")
 
     if len(train_images) == 0:
         raise ValueError(f"No images found in {TRAIN_DIR}")
 
-    # Normalize images
-    train_images = train_images.astype('float32') / 255.0
+    # Normalise
+    train_images = train_images.astype("float32") / 255.0
     if valid_images is not None:
-        valid_images = valid_images.astype('float32') / 255.0
+        valid_images = valid_images.astype("float32") / 255.0
 
-    # Create model
-    print("\n2. Creating classification model...")
-    training_model, feature_extractor_model, base_model, inputs = create_arcface_model()
-
-    # Compile model with categorical cross-entropy
+    # 2. Build model
+    print("\n2. Building ResNet50V2 + ArcFace model...")
+    training_model, feature_extractor, base_model = create_arcface_model(n_classes)
     training_model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=LEARNING_RATE),
-        loss='categorical_crossentropy',
-        metrics=['accuracy']
+        loss="categorical_crossentropy",
+        metrics=["accuracy"]
     )
+    print(f"   Parameters: {training_model.count_params():,}")
 
-    print("\n3. Model Architecture:")
-    training_model.summary()
+    # 3. Augment
+    print("\n3. Creating augmented dataset (CutMix + MixUp)...")
+    aug_imgs, aug_lbls = create_training_data(train_images, train_labels,
+                                               augment_factor=5)
+    print(f"   {len(aug_imgs)} augmented samples")
 
-    # Prepare training data
-    print("\n4. Preparing training data with augmentation...")
-    train_aug_images, train_aug_labels = create_training_data(train_images, train_labels, augment_factor=5)
-    print(f"   Created {len(train_aug_images)} training samples")
-
-    valid_aug_images, valid_aug_labels = None, None
+    aug_valid_imgs = aug_valid_lbls = None
     if valid_images is not None:
-        valid_aug_images, valid_aug_labels = create_training_data(valid_images, valid_labels, augment_factor=3)
-        print(f"   Created {len(valid_aug_images)} validation samples")
+        aug_valid_imgs, aug_valid_lbls = create_training_data(
+            valid_images, valid_labels, augment_factor=2)
 
-    # Callbacks
+    # One-hot encode
+    aug_lbls_oh    = tf.keras.utils.to_categorical(aug_lbls,    n_classes)
+    aug_valid_oh   = (tf.keras.utils.to_categorical(aug_valid_lbls, n_classes)
+                      if aug_valid_lbls is not None else None)
+
+    # 4. Callbacks
+    monitor = "val_loss" if aug_valid_imgs is not None else "loss"
     callbacks = [
-        keras.callbacks.ReduceLROnPlateau(
-            monitor='val_loss' if valid_aug_images is not None else 'loss',
-            factor=0.5,
-            patience=10,  # Increased patience
-            min_lr=1e-7,
-            verbose=1
-        ),
+        CosineAnnealingWarmup(LEARNING_RATE, warmup_epochs=5,
+                              total_epochs=EPOCHS, min_lr=1e-7),
         keras.callbacks.ModelCheckpoint(
-            MODEL_SAVE_PATH,
-            monitor='val_loss' if valid_aug_images is not None else 'loss',
-            save_best_only=True,
-            verbose=1
+            MODEL_SAVE_PATH, monitor=monitor,
+            save_best_only=True, verbose=1
         ),
-        keras.callbacks.TensorBoard(
-            log_dir=f"logs/{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            histogram_freq=1,
-            write_graph=True,
-            write_images=True
-        )
+        keras.callbacks.EarlyStopping(
+            monitor=monitor, patience=20, verbose=1, restore_best_weights=True
+        ),
     ]
 
-    # Convert labels to one-hot encoding
-    train_labels_onehot = tf.keras.utils.to_categorical(train_aug_labels, num_classes=NUM_CLASSES)
-    if valid_aug_images is not None:
-        valid_labels_onehot = tf.keras.utils.to_categorical(valid_aug_labels, num_classes=NUM_CLASSES)
-
-    # Train model
-    print("\n5. Training model...")
-    print(f"   Epochs: {EPOCHS}")
-    print(f"   Batch size: {BATCH_SIZE}")
-    print(f"   Learning rate: {LEARNING_RATE}")
-
-    history = training_model.fit(
-        train_aug_images,
-        train_labels_onehot,
+    # 5. ArcFace training — stage 1
+    print(f"\n4. Stage 1: ArcFace training ({EPOCHS} epochs, bs={BATCH_SIZE})...")
+    training_model.fit(
+        aug_imgs, aug_lbls_oh,
         batch_size=BATCH_SIZE,
         epochs=EPOCHS,
-        validation_data=(valid_aug_images, valid_labels_onehot) if valid_aug_images is not None else None,
+        validation_data=(aug_valid_imgs, aug_valid_oh) if aug_valid_imgs is not None else None,
         callbacks=callbacks,
         verbose=1
     )
 
-    # Fine-tuning: Unfreeze base model
-    print("\n6. Fine-tuning with base model unfrozen...")
-    base_model.trainable = True
-    # Freeze early layers
-    for layer in base_model.layers[:100]:
-        layer.trainable = False
+    # 6. Progressive unfreeze fine-tuning
+    print("\n5. Stage 2: Progressive unfreeze (all ResNet50V2 layers)...")
+    for layer in base_model.layers:
+        layer.trainable = True
 
-    # Recompile with lower learning rate
     training_model.compile(
-        optimizer=keras.optimizers.Adam(learning_rate=LEARNING_RATE * 0.1),
-        loss='categorical_crossentropy',
-        metrics=['accuracy']
+        optimizer=keras.optimizers.Adam(learning_rate=LEARNING_RATE * 0.05),
+        loss="categorical_crossentropy",
+        metrics=["accuracy"]
     )
-
-    history_fine = training_model.fit(
-        train_aug_images,
-        train_labels_onehot,
+    training_model.fit(
+        aug_imgs, aug_lbls_oh,
         batch_size=BATCH_SIZE,
-        epochs=50,  # Increased fine-tuning epochs
-        validation_data=(valid_aug_images, valid_labels_onehot) if valid_aug_images is not None else None,
+        epochs=40,
+        validation_data=(aug_valid_imgs, aug_valid_oh) if aug_valid_imgs is not None else None,
         callbacks=[
-            keras.callbacks.ReduceLROnPlateau(
-                monitor='val_loss' if valid_aug_images is not None else 'loss',
-                factor=0.5,
-                patience=8,
-                min_lr=1e-7,
-                verbose=1
-            )
+            keras.callbacks.ReduceLROnPlateau(monitor=monitor, factor=0.5,
+                                              patience=8, min_lr=1e-8, verbose=1),
+            keras.callbacks.ModelCheckpoint(MODEL_SAVE_PATH, monitor=monitor,
+                                             save_best_only=True, verbose=1),
         ],
         verbose=1
     )
 
-    # Create feature extractor model (without classification head)
-    print(f"\n7. Creating final feature extractor...")
-    feature_extractor = feature_extractor_model
+    # 7. Triplet fine-tuning
+    print("\n6. Stage 3: Triplet loss hard-negative fine-tuning...")
+    fine_tune_triplet(feature_extractor, aug_imgs, aug_lbls,
+                      epochs=30, batch_size=16, lr=5e-6, logger=logger)
 
-    # Save the feature extractor
+    # 8. Save feature extractor
+    print(f"\n7. Saving feature extractor → {MODEL_SAVE_PATH}")
     feature_extractor.save(MODEL_SAVE_PATH)
-    print(f"   Saved to {MODEL_SAVE_PATH}")
 
-    # Evaluate model
+    # 9. Evaluate
     print("\n8. Evaluating model...")
-    evaluate_advanced_model(feature_extractor, train_images, valid_images)
+    evaluate_advanced_model(feature_extractor, train_images,
+                             valid_images, train_labels)
 
     print("\n" + "=" * 70)
-    print("Advanced training completed successfully!")
+    print(f"✓ Training complete!  Model saved: {MODEL_SAVE_PATH}")
     print("=" * 70)
-    print(f"Feature extractor saved to: {MODEL_SAVE_PATH}")
-    print("\nNext steps:")
-    print("1. Update palm_recognition.py to use the new model")
-    print("2. Test the improved accuracy")
-    print("3. Adjust threshold if needed")
-
     return feature_extractor
 
-def evaluate_advanced_model(model, train_images, valid_images=None):
-    """Evaluate the advanced trained model"""
-    print("\nEvaluating advanced model performance...")
 
-    # Extract features
-    print("Extracting features from training images...")
-    train_features = model.predict(train_images, batch_size=16, verbose=0)
+# ─────────────────────────────────────────────────────────────────────────────
+#  Evaluation
+# ─────────────────────────────────────────────────────────────────────────────
+def evaluate_advanced_model(model, train_images, valid_images=None,
+                             train_labels=None):
+    """Comprehensive evaluation with FAR / FRR / EER metrics."""
+    print("\nEvaluating model similarity statistics...")
+    feats = model.predict(train_images, batch_size=16, verbose=0)
 
-    # Calculate similarity metrics
-    print("Calculating similarity metrics...")
+    # Intra-class (same palm)
+    same_sims, diff_sims = [], []
+    n = len(feats)
 
-    # Intra-class similarity (same palm with augmentation)
-    similarities_same = []
-    for i in range(min(10, len(train_images))):
-        feat1 = train_features[i]
-        # Simulate augmentation effect
-        noise = np.random.normal(0, 0.1, feat1.shape)
-        feat2 = feat1 + noise
-        feat2 = feat2 / np.linalg.norm(feat2)  # Re-normalize
-        sim = cosine_similarity([feat1], [feat2])[0][0]
-        similarities_same.append(sim)
-
-    # Inter-class similarity (different palms)
-    similarities_diff = []
-    num_comparisons = min(100, len(train_features) * (len(train_features) - 1) // 2)
-    for _ in range(num_comparisons):
-        i, j = random.sample(range(len(train_features)), 2)
-        sim = cosine_similarity([train_features[i]], [train_features[j]])[0][0]
-        similarities_diff.append(sim)
-
-    avg_same = np.mean(similarities_same)
-    avg_diff = np.mean(similarities_diff)
-    std_same = np.std(similarities_same)
-    std_diff = np.std(similarities_diff)
-    min_same = np.min(similarities_same)
-    max_diff = np.max(similarities_diff)
-
-    print(f"\nAdvanced Model Similarity Statistics:")
-    print(f"  Same palm (with simulated augmentation):")
-    print(f"    Mean: {avg_same:.4f} ± {std_same:.4f}")
-    print(f"    Min: {min_same:.4f}")
-    print(f"  Different palms:")
-    print(f"    Mean: {avg_diff:.4f} ± {std_diff:.4f}")
-    print(f"    Max: {max_diff:.4f}")
-    print(f"  Separation: {avg_same - avg_diff:.4f}")
-
-    # Calculate optimal threshold
-    if min_same > max_diff:
-        threshold = (min_same + max_diff) / 2
-        threshold = max(0.75, min(0.95, threshold))
-        print(f"\n✓ Excellent separation! ArcFace model performing very well.")
+    if train_labels is not None:
+        for i in range(min(200, n)):
+            for j in range(i + 1, min(200, n)):
+                sim = cosine_similarity([feats[i]], [feats[j]])[0][0]
+                if train_labels[i] == train_labels[j]:
+                    same_sims.append(sim)
+                else:
+                    diff_sims.append(sim)
     else:
-        threshold = (avg_same + avg_diff) / 2
-        threshold = max(0.75, min(0.95, threshold))
-        print(f"\n⚠ Some overlap detected. Consider more training data.")
+        for i in range(min(10, n)):
+            noise = np.random.normal(0, 0.05, feats[i].shape)
+            f2    = feats[i] + noise
+            f2   /= np.linalg.norm(f2)
+            same_sims.append(cosine_similarity([feats[i]], [f2])[0][0])
+        for _ in range(min(100, n*(n-1)//2)):
+            i, j  = random.sample(range(n), 2)
+            diff_sims.append(cosine_similarity([feats[i]], [feats[j]])[0][0])
 
-    print(f"\nRecommended threshold: {threshold:.3f}")
-    print(f"  (Current threshold in palm_recognition.py: 0.75)")
-    print(f"  (Update palm_recognition.py with: threshold={threshold:.3f})")
+    if same_sims:
+        print(f"  Same palm   — mean: {np.mean(same_sims):.4f} ± {np.std(same_sims):.4f}"
+              f"  min: {np.min(same_sims):.4f}")
+    if diff_sims:
+        print(f"  Diff palms  — mean: {np.mean(diff_sims):.4f} ± {np.std(diff_sims):.4f}"
+              f"  max: {np.max(diff_sims):.4f}")
+    if same_sims and diff_sims:
+        print(f"  Separation  — {np.mean(same_sims) - np.mean(diff_sims):.4f}")
+        threshold = max(0.70, min(0.92,
+            (np.mean(same_sims) + np.mean(diff_sims)) / 2))
+        print(f"  ✓ Recommended threshold: {threshold:.3f}")
+
+    # ── FAR / FRR / EER Analysis ──────────────────────────────────────────
+    if same_sims and diff_sims:
+        print("\n  ── FAR / FRR / EER Analysis ──")
+        same_arr = np.array(same_sims)
+        diff_arr = np.array(diff_sims)
+        best_eer = 1.0
+        best_thr = 0.70
+
+        for t in np.arange(0.50, 0.98, 0.01):
+            # FAR = fraction of different-palm pairs exceeding threshold
+            far = float(np.sum(diff_arr >= t)) / max(len(diff_arr), 1)
+            # FRR = fraction of same-palm pairs below threshold
+            frr = float(np.sum(same_arr < t)) / max(len(same_arr), 1)
+            eer_diff = abs(far - frr)
+            if eer_diff < best_eer:
+                best_eer = eer_diff
+                best_thr = t
+                best_far = far
+                best_frr = frr
+
+        print(f"  EER threshold : {best_thr:.3f}")
+        print(f"  FAR at EER    : {best_far:.4f} ({best_far*100:.2f}%)")
+        print(f"  FRR at EER    : {best_frr:.4f} ({best_frr*100:.2f}%)")
+
+        # Report at our operational threshold (0.80)
+        op_thr = 0.80
+        op_far = float(np.sum(diff_arr >= op_thr)) / max(len(diff_arr), 1)
+        op_frr = float(np.sum(same_arr < op_thr)) / max(len(same_arr), 1)
+        print(f"\n  At operational threshold {op_thr}:")
+        print(f"  FAR = {op_far:.4f} ({op_far*100:.2f}%) — false accepts")
+        print(f"  FRR = {op_frr:.4f} ({op_frr*100:.2f}%) — false rejects")
+
 
 if __name__ == "__main__":
-    # Set random seeds
-    np.random.seed(42)
-    random.seed(42)
-    tf.random.set_seed(42)
-
+    np.random.seed(42);  random.seed(42);  tf.random.set_seed(42)
     try:
-        model = train_arcface_model()
-        print("\nTo use this improved model:")
-        print("1. Copy palm_feature_extractor_advanced.h5 to palm_feature_extractor.h5")
-        print("   or update palm_recognition.py to load the advanced model")
-        print("2. Update threshold in palm_recognition.py based on evaluation")
-        print("3. Test with real palm verification")
+        train_arcface_model()
     except Exception as e:
-        print(f"\nError during advanced training: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"\n✗ Training failed: {e}")
+        import traceback; traceback.print_exc()

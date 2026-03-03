@@ -1,0 +1,23 @@
+2026-03-01 12:11:27,991  INFO  127.0.0.1 - - [01/Mar/2026 12:11:27] "GET /deposit HTTP/1.1" 200 -
+2026-03-01 12:11:31,699  INFO  127.0.0.1 - - [01/Mar/2026 12:11:31] "GET /users HTTP/1.1" 200 -
+2026-03-01 12:11:36,891  INFO  127.0.0.1 - - [01/Mar/2026 12:11:36] "GET /deposit HTTP/1.1" 200 -
+2026-03-01 12:11:58,761  INFO  127.0.0.1 - - [01/Mar/2026 12:11:58] "POST /deposit HTTP/1.1" 200 -
+2026-03-01 12:14:32,884  INFO  127.0.0.1 - - [01/Mar/2026 12:14:32] "GET /balance HTTP/1.1" 200 -
+2026-03-01 12:14:39,511  INFO  127.0.0.1 - - [01/Mar/2026 12:14:39] "POST /balance HTTP/1.1" 200 -
+2026-03-01 12:14:44,962  INFO  127.0.0.1 - - [01/Mar/2026 12:14:44] "GET /transfer HTTP/1.1" 200 -
+2026-03-01 12:14:54,654  INFO  127.0.0.1 - - [01/Mar/2026 12:14:54] "GET /users HTTP/1.1" 200 -
+2026-03-01 12:15:08,395  INFO  127.0.0.1 - - [01/Mar/2026 12:15:08] "GET /transfer HTTP/1.1" 200 -
+2026-03-01 12:15:27,030  INFO  127.0.0.1 - - [01/Mar/2026 12:15:27] "POST /transfer HTTP/1.1" 200 -
+2026-03-01 12:15:32,673  INFO  127.0.0.1 - - [01/Mar/2026 12:15:32] "GET /users HTTP/1.1" 200 -
+2026-03-01 12:19:07,993  INFO  127.0.0.1 - - [01/Mar/2026 12:19:07] "GET /deposit HTTP/1.1" 200 -
+2026-03-01 12:19:30,678  INFO  127.0.0.1 - - [01/Mar/2026 12:19:30] "POST /deposit HTTP/1.1" 200 -
+2026-03-01 12:20:05,382  INFO  127.0.0.1 - - [01/Mar/2026 12:20:05] "POST /deposit HTTP/1.1" 200 -
+2026-03-01 12:20:45,245  INFO  Starting triplet fine-tuning...
+2026-03-01 12:21:50,192  INFO    Triplet epoch 5/30 — loss: 0.0000
+2026-03-01 12:23:54,390  INFO    Triplet epoch 10/30 — loss: 0.0000
+2026-03-01 12:24:57,148  INFO    Triplet epoch 15/30 — loss: 0.0000
+2026-03-01 12:25:49,517  INFO    Triplet epoch 20/30 — loss: 0.0000
+2026-03-01 12:26:44,102  INFO    Triplet epoch 25/30 — loss: 0.0000
+2026-03-01 12:27:40,638  INFO    Triplet epoch 30/30 — loss: 0.0000
+2026-03-01 12:27:40,709  WARNING  Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2026-03-01 12:33:32,034  INFO   * Detected change in '/Users/chamanpreetsingh/Desktop/PalmPay-main/palm_recognition.py', reloading

@@ -1,105 +1,447 @@
 {% extends 'base.html' %}
+{% block page_header %}
+<div class="eyebrow"><i class="fas fa-arrow-circle-down"></i> Deposit</div>
+<h1>Deposit Funds</h1>
+<p class="subtitle">Add money to your account — secured with palm biometric verification{% if stripe_enabled %} + Stripe
+  payment{% endif %}.</p>
+{% endblock %}
 {% block content %}
-<div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-  <div class="w-full max-w-md">
-    
-    <!-- Alert Section -->
-    {% if message %}
-      <div class="mb-6 rounded-2xl backdrop-blur-sm border animate-slide-down" {% if 'successful' in message or '✅' in message %}
-           style="background: rgba(34, 197, 94, 0.15); border-color: rgba(34, 197, 94, 0.3); color: #86efac;"
-        {% elif '❌' in message %}
-           style="background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5;"
-        {% else %}
-           style="background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.3); color: #93c5fd;"
-        {% endif %}>
-        <div class="px-6 py-4 flex items-start space-x-3">
-          <svg class="w-6 h-6 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            {% if 'successful' in message or '✅' in message %}
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            {% elif '❌' in message %}
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            {% else %}
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            {% endif %}
-          </svg>
-          <span class="text-sm font-medium">{{ message }}</span>
+<div style="max-width:500px;margin:0 auto;">
+
+  {% if message %}
+  {% if '✅' in message or 'successful' in message %}
+  <div class="alert alert-success"><span class="alert-icon"><i class="fas fa-check-circle"></i></span><span
+      class="alert-msg">{{ message }}</span></div>
+  {% elif '❌' in message %}
+  <div class="alert alert-error"><span class="alert-icon"><i class="fas fa-times-circle"></i></span><span
+      class="alert-msg">{{ message }}</span></div>
+  {% else %}
+  <div class="alert alert-info"><span class="alert-icon"><i class="fas fa-info-circle"></i></span><span
+      class="alert-msg">{{ message }}</span></div>
+  {% endif %}
+  {% endif %}
+
+  <!-- ═══════════ STRIPE CARD FORM (shown after palm verification) ═══════════ -->
+  {% if show_stripe_form %}
+  <div class="card" id="stripe-card-section">
+    <div class="card-header" style="background:transparent; border-bottom: 1px solid var(--c-border);">
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div
+          style="width:48px;height:48px;background:rgba(99,102,241,0.1);border-radius:12px;display:flex;align-items:center;justify-content:center;color:#6366f1;">
+          <i class="fas fa-credit-card fa-lg"></i>
         </div>
-      </div>
-    {% endif %}
-
-    <!-- Main Card -->
-    <div class="card-hover bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-3xl backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
-      
-      <!-- Header -->
-      <div class="bg-gradient-to-r from-emerald-500 to-green-500 p-8">
-        <div class="flex items-center justify-between">
-          <div class="flex-1">
-            <h1 class="text-3xl font-bold text-white flex items-center">
-              <svg class="w-8 h-8 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-              </svg>
-              Deposit Funds
-            </h1>
-            <p class="text-white/80 text-sm mt-1">Add money to your account</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Form -->
-      <div class="p-8 space-y-6">
-        <form method="POST" class="space-y-6">
-          
-          <div class="space-y-2">
-            <label class="block text-sm font-semibold text-gray-200">Account Number *</label>
-            <input type="text" name="account_number" placeholder="ACC123456789" required
-                   class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500/50 focus:bg-white/10 transition-all duration-200">
-          </div>
-
-          <div class="space-y-2">
-            <label class="block text-sm font-semibold text-gray-200">Security PIN (4 digits) *</label>
-            <input type="password" name="pin" placeholder="••••" maxlength="4" pattern="[0-9]{4}" required
-                   class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500/50 focus:bg-white/10 transition-all duration-200">
-          </div>
-
-          <div class="space-y-2">
-            <label class="block text-sm font-semibold text-gray-200">Amount to Deposit (₹) *</label>
-            <div class="relative">
-              <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-semibold">₹</span>
-              <input type="number" step="0.01" name="amount" placeholder="1000.00" min="0.01" required
-                     class="w-full pl-8 pr-4 py-3 rounded-xl bg-white/5 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500/50 focus:bg-white/10 transition-all duration-200">
-            </div>
-            <p class="text-xs text-gray-400">Minimum deposit: ₹1.00</p>
-          </div>
-
-          <button type="submit" class="w-full bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-white font-bold py-4 px-6 rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-emerald-500/25 flex items-center justify-center space-x-2 group">
-            <svg class="w-5 h-5 group-hover:animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-            </svg>
-            <span>Proceed with Deposit</span>
-          </button>
-        </form>
-      </div>
-
-      <!-- Info Footer -->
-      <div class="bg-gradient-to-r from-blue-500/10 to-emerald-500/10 border-t border-white/10 px-8 py-4">
-        <div class="flex items-start space-x-2">
-          <svg class="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
-          </svg>
-          <p class="text-xs text-gray-300">After entering your details, you'll need to authenticate with your palm biometrics for security.</p>
+        <div>
+          <h2 style="font-size:20px;font-weight:800;color:var(--c-text);">Complete Payment</h2>
+          <p style="font-size:14px;color:var(--c-muted);margin-top:4px;">
+            Palm verified <span style="color:var(--c-green);">✓ {{ palm_similarity }}</span> — Enter card details below
+          </p>
         </div>
       </div>
     </div>
+    <div class="card-body">
 
-    <!-- Back Link -->
-    <div class="mt-6 text-center">
-      <a href="{{ url_for('home') }}" class="text-gray-400 hover:text-white transition-colors flex items-center justify-center space-x-1">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
-        </svg>
-        <span>Back to Home</span>
-      </a>
+      <!-- Deposit summary -->
+      <div
+        style="background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(0,229,255,0.06));border:1px solid rgba(99,102,241,0.2);border-radius:14px;padding:20px;margin-bottom:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <p style="font-size:13px;color:var(--c-muted);margin-bottom:4px;">Deposit Amount</p>
+            <p style="font-size:32px;font-weight:800;color:var(--c-text);">₹{{ "%.2f"|format(deposit_amount) }}</p>
+          </div>
+          <div style="text-align:right;">
+            <p style="font-size:13px;color:var(--c-muted);margin-bottom:4px;">Account</p>
+            <p style="font-size:16px;font-weight:600;color:var(--c-text);font-family:var(--f-mono);">{{ deposit_account
+              }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stripe Elements Mount Point -->
+      <div class="form-group">
+        <label class="form-label"><i class="fas fa-lock" style="color:#6366f1;margin-right:6px;"></i>Card
+          Details</label>
+        <div id="card-element"
+          style="padding:14px 16px;background:var(--c-surface);border:1px solid var(--c-border);border-radius:10px;transition:border-color 0.2s;">
+        </div>
+        <div id="card-errors" style="color:var(--c-red);font-size:13px;margin-top:8px;display:none;"></div>
+      </div>
+
+      <button type="button" id="pay-btn" class="btn btn-full btn-lg"
+        style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-weight:700;font-size:16px;box-shadow:0 12px 24px rgba(99,102,241,0.3);border:none;margin-top:8px;">
+        <i class="fas fa-lock"></i>
+        Pay ₹{{ "%.2f"|format(deposit_amount) }}
+      </button>
+
+      <!-- Processing / success states -->
+      <div id="payment-processing" style="display:none;text-align:center;padding:24px;">
+        <div
+          style="width:48px;height:48px;border:3px solid rgba(99,102,241,0.2);border-top-color:#6366f1;border-radius:50%;margin:0 auto 16px;animation:spin 0.8s linear infinite;">
+        </div>
+        <p style="color:#6366f1;font-weight:600;">Processing payment...</p>
+      </div>
+
+      <div id="payment-success" style="display:none;text-align:center;padding:24px;">
+        <div
+          style="width:64px;height:64px;background:rgba(0,230,118,0.1);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+          <i class="fas fa-check fa-2x" style="color:var(--c-green);"></i>
+        </div>
+        <p style="font-size:20px;font-weight:700;color:var(--c-text);margin-bottom:8px;">Payment Successful!</p>
+        <p id="success-message" style="font-size:14px;color:var(--c-muted);"></p>
+        <a href="{{ url_for('balance') }}" class="btn btn-green btn-lg" style="margin-top:16px;display:inline-block;">
+          <i class="fas fa-wallet"></i> Check Balance
+        </a>
+      </div>
+
+      <div id="payment-error" style="display:none;text-align:center;padding:24px;">
+        <div
+          style="width:64px;height:64px;background:rgba(255,61,0,0.1);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+          <i class="fas fa-times fa-2x" style="color:var(--c-red);"></i>
+        </div>
+        <p style="font-size:18px;font-weight:700;color:var(--c-red);margin-bottom:8px;">Payment Failed</p>
+        <p id="error-detail" style="font-size:14px;color:var(--c-muted);"></p>
+        <a href="{{ url_for('deposit') }}" class="btn btn-full btn-lg"
+          style="margin-top:16px;background:rgba(255,61,0,0.1);color:var(--c-red);border:1px solid rgba(255,61,0,0.3);">
+          <i class="fas fa-redo"></i> Try Again
+        </a>
+      </div>
+
+      <div style="text-align:center;margin-top:16px;display:flex;align-items:center;justify-content:center;gap:8px;">
+        <i class="fas fa-shield-alt" style="color:var(--c-muted);font-size:12px;"></i>
+        <span style="font-size:12px;color:var(--c-muted);">Secured by Stripe — PCI DSS Level 1 compliant. Your card
+          details never touch our servers.</span>
+      </div>
+
     </div>
   </div>
+
+  <!-- Stripe.js -->
+  <script src="https://js.stripe.com/v3/"></script>
+  <script>
+    (function () {
+      const stripe = Stripe('{{ stripe_pk }}');
+      const elements = stripe.elements({
+        clientSecret: '{{ client_secret }}',
+        appearance: {
+          theme: 'night',
+          variables: {
+            colorPrimary: '#6366f1',
+            colorBackground: '#1a1a2e',
+            colorText: '#e0e0e0',
+            colorDanger: '#ff3d00',
+            fontFamily: '"Inter", system-ui, sans-serif',
+            borderRadius: '10px',
+            spacingUnit: '4px',
+          },
+          rules: {
+            '.Input': { border: '1px solid #2a2a4a', padding: '12px 14px' },
+            '.Input:focus': { borderColor: '#6366f1', boxShadow: '0 0 0 2px rgba(99,102,241,0.3)' },
+          }
+        }
+      });
+
+      const paymentElement = elements.create('payment');
+      paymentElement.mount('#card-element');
+
+      const payBtn = document.getElementById('pay-btn');
+      const processingEl = document.getElementById('payment-processing');
+      const successEl = document.getElementById('payment-success');
+      const errorPanel = document.getElementById('payment-error');
+      const errorsEl = document.getElementById('card-errors');
+
+      payBtn.addEventListener('click', async () => {
+        payBtn.disabled = true;
+        payBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+        processingEl.style.display = 'block';
+        errorsEl.style.display = 'none';
+
+        const { error, paymentIntent } = await stripe.confirmPayment({
+          elements,
+          confirmParams: {},
+          redirect: 'if_required',
+        });
+
+        if (error) {
+          payBtn.disabled = false;
+          payBtn.innerHTML = '<i class="fas fa-lock"></i> Pay ₹{{ "%.2f"|format(deposit_amount) }}';
+          processingEl.style.display = 'none';
+          errorsEl.textContent = error.message;
+          errorsEl.style.display = 'block';
+          return;
+        }
+
+        if (paymentIntent && paymentIntent.status === 'succeeded') {
+          // Confirm on server side — credit balance
+          try {
+            const resp = await fetch('/api/stripe/confirm-deposit', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                payment_intent_id: paymentIntent.id,
+                account_number: '{{ deposit_account }}',
+                amount: {{ deposit_amount }},
+              })
+    });
+    const data = await resp.json();
+
+    processingEl.style.display = 'none';
+    payBtn.style.display = 'none';
+    document.getElementById('card-element').style.display = 'none';
+    document.querySelector('.form-group').style.display = 'none';
+
+    if (data.success) {
+      successEl.style.display = 'block';
+      document.getElementById('success-message').textContent = data.message;
+    } else {
+      errorPanel.style.display = 'block';
+      document.getElementById('error-detail').textContent = data.error || 'Server confirmation failed';
+    }
+          } catch (fetchErr) {
+      processingEl.style.display = 'none';
+      errorPanel.style.display = 'block';
+      document.getElementById('error-detail').textContent = 'Network error: ' + fetchErr.message;
+    }
+        } else {
+      processingEl.style.display = 'none';
+      errorPanel.style.display = 'block';
+      document.getElementById('error-detail').textContent = 'Payment was not completed. Status: ' + (paymentIntent ? paymentIntent.status : 'unknown');
+    }
+      });
+    }) ();
+  </script>
+
+  {% else %}
+  <!-- ═══════════ STANDARD DEPOSIT FORM (before palm verification) ═══════════ -->
+  <div class="card">
+    <div class="card-header" style="background:transparent; border-bottom: 1px solid var(--c-border);">
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div
+          style="width:48px;height:48px;background:rgba(0,230,118,0.1);border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--c-green);">
+          <i class="fas fa-arrow-down fa-lg"></i>
+        </div>
+        <div>
+          <h2 style="font-size:20px;font-weight:800;color:var(--c-text);">Deposit Funds</h2>
+          <p style="font-size:14px;color:var(--c-muted);margin-top:4px;">
+            PIN + Palm biometric{% if stripe_enabled %} + Stripe card{% endif %}
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-body">
+      <form method="POST" id="deposit-form">
+        <div class="form-group">
+          <label class="form-label">Account Number *</label>
+          <input type="text" name="account_number" class="form-input" placeholder="ACC123456789" required
+            autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">4-Digit PIN *</label>
+          <input type="password" name="pin" class="form-input mono" placeholder="••••" maxlength="4" pattern="[0-9]{4}"
+            required style="letter-spacing:8px;font-size:20px;">
+        </div>
+        <div class="form-group" style="padding-top:16px;">
+          <label class="form-label" style="font-size:14px;text-transform:uppercase;letter-spacing:1px;">Deposit Amount
+            *</label>
+          <div class="form-input-prefix">
+            <span class="prefix">₹</span>
+            <input type="number" step="0.01" name="amount" class="form-input" placeholder="0.00" min="0.01" required
+              style="font-size:24px;font-weight:700;color:var(--c-text);background:rgba(0,230,118,0.05);border-color:rgba(0,230,118,0.2);">
+          </div>
+          <p style="font-size:13px;color:var(--c-muted);margin-top:8px;"><i class="fas fa-info-circle"></i> Minimum:
+            ₹1.00</p>
+        </div>
+
+        <!-- Payment method hint -->
+        <div
+          style="background:rgba(0,230,118,0.05);border:1px solid rgba(0,230,118,0.2);border-radius:12px;padding:16px;margin-bottom:24px;font-size:14px;color:var(--c-muted);display:flex;align-items:center;gap:12px;">
+          <div
+            style="width:32px;height:32px;border-radius:8px;background:rgba(0,230,118,0.1);color:var(--c-green);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fas fa-hand-sparkles"></i>
+          </div>
+          {% if stripe_enabled %}
+          Palm scan first, then enter card details via Stripe. Hold palm flat &amp; steady.
+          {% else %}
+          3-frame palm scan triggered after you proceed. Hold palm flat &amp; steady.
+          {% endif %}
+        </div>
+
+        <!-- Hidden palm image inputs -->
+        <input type="hidden" name="palm_image_1" id="palm_image_1">
+        <input type="hidden" name="palm_image_2" id="palm_image_2">
+        <input type="hidden" name="palm_image_3" id="palm_image_3">
+
+        <!-- Camera UI -->
+        <div id="camera-container" style="display:none;margin-bottom:24px;text-align:center;">
+          <div
+            style="position:relative;width:100%;max-width:400px;margin:0 auto;border-radius:16px;overflow:hidden;border:2px solid var(--c-green);box-shadow:0 0 24px rgba(0,230,118,0.25);">
+            <video id="video-preview" autoplay playsinline style="width:100%;display:block;"></video>
+
+            <!-- Animated palm guide ring -->
+            <div id="palm-guide"
+              style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:180px;height:180px;border-radius:50%;border:3px solid rgba(0,230,118,0.8);box-shadow:0 0 0 0 rgba(0,230,118,0.4);animation:palmPulse 1.4s ease-out infinite;pointer-events:none;">
+            </div>
+
+            <div id="capture-overlay"
+              style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:flex-end;justify-content:center;padding-bottom:16px;">
+              <div id="status-pill"
+                style="background:rgba(0,0,0,0.72);color:#fff;font-size:14px;font-weight:600;padding:8px 20px;border-radius:20px;backdrop-filter:blur(8px);">
+                <span id="capture-status">Position your palm in the ring</span>
+              </div>
+            </div>
+
+            <!-- Frame progress dots -->
+            <div style="position:absolute;top:12px;right:12px;display:flex;gap:6px;" id="frame-dots">
+              <div class="frame-dot" id="dot-1"
+                style="width:12px;height:12px;border-radius:50%;border:2px solid #fff;background:transparent;transition:background .3s;">
+              </div>
+              <div class="frame-dot" id="dot-2"
+                style="width:12px;height:12px;border-radius:50%;border:2px solid #fff;background:transparent;transition:background .3s;">
+              </div>
+              <div class="frame-dot" id="dot-3"
+                style="width:12px;height:12px;border-radius:50%;border:2px solid #fff;background:transparent;transition:background .3s;">
+              </div>
+            </div>
+
+            <!-- Flash overlay -->
+            <div id="flash-overlay"
+              style="position:absolute;top:0;left:0;right:0;bottom:0;background:white;opacity:0;pointer-events:none;transition:opacity 0.12s;">
+            </div>
+          </div>
+          <canvas id="canvas-capture" style="display:none;"></canvas>
+          <p style="font-size:12px;color:var(--c-muted);margin-top:8px;"><i class="fas fa-info-circle"></i> 3 frames
+            captured automatically for best accuracy</p>
+        </div>
+
+        <!-- Processing overlay -->
+        <div id="processing-overlay"
+          style="display:none;margin-bottom:24px;text-align:center;padding:20px;background:rgba(0,230,118,0.08);border-radius:12px;border:1px solid rgba(0,230,118,0.2);">
+          <div class="spinner"
+            style="width:40px;height:40px;border:3px solid rgba(0,230,118,0.2);border-top-color:var(--c-green);border-radius:50%;margin:0 auto 12px;animation:spin 0.8s linear infinite;">
+          </div>
+          <p style="color:var(--c-green);font-weight:600;font-size:14px;">Verifying palm... please wait</p>
+        </div>
+
+        <button type="button" id="start-btn" class="btn btn-green btn-full btn-lg">
+          <i class="fas fa-arrow-down"></i> Proceed with Deposit
+        </button>
+        <button type="submit" id="submit-btn" style="display:none;"></button>
+      </form>
+    </div>
+
+    <div class="card-footer" style="text-align:center;">
+      <a href="{{ url_for('home') }}" style="color:var(--c-muted);text-decoration:none;font-size:13px;">
+        <i class="fas fa-arrow-left fa-xs"></i> Back to Home
+      </a>
+      {% if stripe_enabled %}
+      &nbsp;·&nbsp;
+      <a href="{{ url_for('payments') }}" style="color:#6366f1;text-decoration:none;font-size:13px;">
+        <i class="fas fa-credit-card fa-xs"></i> Payment History
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
 </div>
+
+<style>
+  @keyframes palmPulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(0, 230, 118, 0.5);
+    }
+
+    70% {
+      box-shadow: 0 0 0 20px rgba(0, 230, 118, 0);
+    }
+
+    100% {
+      box-shadow: 0 0 0 0 rgba(0, 230, 118, 0);
+    }
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+</style>
+
+<script>
+  (function () {
+    const startBtn = document.getElementById('start-btn');
+    if (!startBtn) return; // Stripe form mode — no camera needed
+
+    const form = document.getElementById('deposit-form');
+    const camContainer = document.getElementById('camera-container');
+    const video = document.getElementById('video-preview');
+    const canvas = document.getElementById('canvas-capture');
+    const statusEl = document.getElementById('capture-status');
+    const flashEl = document.getElementById('flash-overlay');
+    const procOverlay = document.getElementById('processing-overlay');
+    const dots = [document.getElementById('dot-1'),
+    document.getElementById('dot-2'),
+    document.getElementById('dot-3')];
+    let stream = null;
+    let capturedFrames = 0;
+
+    function setStatus(msg) { statusEl.textContent = msg; }
+
+    startBtn.addEventListener('click', async () => {
+      if (!form.checkValidity()) { form.reportValidity(); return; }
+      startBtn.disabled = true;
+      startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Opening Camera...';
+      camContainer.style.display = 'block';
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+        });
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          setStatus('Position your palm in the ring');
+          // Give user 2s to position then start capturing
+          setTimeout(captureSequence, 2000);
+        };
+      } catch (err) {
+        setStatus('Camera Access Denied — try again');
+        startBtn.disabled = false;
+        startBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Camera Error — Try Again';
+      }
+    });
+
+    async function captureSequence() {
+      for (let i = 1; i <= 3; i++) {
+        setStatus(`Capturing frame ${i} of 3… hold steady`);
+        await delay(600);
+        await captureFrame(i);
+        dots[i - 1].style.background = 'var(--c-green)';
+        await delay(500);
+      }
+      // Stop camera, show processing, submit
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      camContainer.style.display = 'none';
+      procOverlay.style.display = 'block';
+      await delay(400);
+      document.getElementById('submit-btn').click();
+    }
+
+    async function captureFrame(index) {
+      return new Promise(resolve => {
+        // flash
+        flashEl.style.opacity = '0.85';
+        setTimeout(() => {
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+          document.getElementById(`palm_image_${index}`).value = dataUrl;
+          flashEl.style.opacity = '0';
+          resolve();
+        }, 120);
+      });
+    }
+
+    function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+  })();
+</script>
 {% endblock %}

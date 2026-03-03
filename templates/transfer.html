@@ -1,68 +1,278 @@
 {% extends 'base.html' %}
+{% block page_header %}
+<div class="eyebrow"><i class="fas fa-exchange-alt"></i> Transfer</div>
+<h1>P2P Transfer</h1>
+<p class="subtitle">Instant peer-to-peer fund transfers secured by sender palm biometric.</p>
+{% endblock %}
 {% block content %}
-<div class="max-w-xl mx-auto">
-  <!-- Header Section -->
-  <div class="text-center mb-8">
-    <div class="w-20 h-20 bg-gradient-to-r from-violet-400 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-4">
-      <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
-      </svg>
+<div style="max-width:540px;margin:0 auto;">
+
+  {% if message %}
+  {% if 'successful' in message %}
+  <div class="alert alert-success"><span class="alert-icon"><i class="fas fa-check-circle"></i></span><span
+      class="alert-msg">{{ message }}</span></div>
+  {% elif 'failed' in message or 'Invalid' in message or 'not found' in message or 'Insufficient' in message or '❌' in
+  message %}
+  <div class="alert alert-error"><span class="alert-icon"><i class="fas fa-times-circle"></i></span><span
+      class="alert-msg">{{ message }}</span></div>
+  {% else %}
+  <div class="alert alert-info"><span class="alert-icon"><i class="fas fa-info-circle"></i></span><span
+      class="alert-msg">{{ message }}</span></div>
+  {% endif %}
+  {% endif %}
+
+  <div class="card">
+    <div class="card-header" style="background:transparent;border-bottom:1px solid var(--c-border);">
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div
+          style="width:48px;height:48px;background:rgba(124,58,237,0.1);border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--c-violet);">
+          <i class="fas fa-exchange-alt fa-lg"></i>
+        </div>
+        <div>
+          <h2 style="font-size:20px;font-weight:800;color:var(--c-text);">Fund Transfer</h2>
+          <p style="font-size:14px;color:var(--c-muted);margin-top:4px;">Sender palm verification (3-frame ensemble)</p>
+        </div>
+      </div>
     </div>
-    <h2 class="text-3xl font-bold mb-2 bg-gradient-to-r from-violet-400 to-purple-500 bg-clip-text text-transparent">Transfer Funds</h2>
-    <p class="text-gray-400">Send money to another account securely</p>
-  </div>
 
-  <!-- Transfer Form -->
-  <div class="bg-gradient-to-br from-white/10 to-white/5 rounded-3xl p-8 border border-white/20 shadow-2xl backdrop-blur-sm">
-    {% if message %}
-      <div class="mb-6 rounded-2xl bg-gradient-to-r from-violet-400/20 to-purple-500/20 border border-violet-400/30 text-violet-100 px-6 py-4 font-medium flex items-center">
-        <svg class="w-5 h-5 mr-3 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-        </svg>
-        {{ message }}
-      </div>
-    {% endif %}
+    <div class="card-body">
+      <form method="POST" id="transfer-form">
+        <div class="divider"><span>Sender Details</span></div>
 
-    <form method="POST" class="space-y-6">
-      <div class="space-y-4">
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-300">From Account (Sender)</label>
-          <input class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-400/50 focus:border-violet-400/50 transition-all duration-200" 
-                 name="from_account" placeholder="Enter sender account number" required>
+        <div class="form-group" style="margin-bottom:20px;">
+          <label class="form-label" style="font-size:13px;">From Account *</label>
+          <input type="text" name="from_account" class="form-input" placeholder="ACC_SENDER_001" required
+            autocomplete="off">
         </div>
-        
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-300">Sender's 4-Digit PIN</label>
-          <input class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-400/50 focus:border-violet-400/50 transition-all duration-200" 
-                 type="password" name="pin" placeholder="Enter sender's 4-digit PIN" maxlength="4" pattern="[0-9]{4}" required>
+        <div class="form-group">
+          <label class="form-label" style="font-size:13px;">Sender PIN *</label>
+          <input type="password" name="pin" class="form-input mono" placeholder="••••" maxlength="4" pattern="[0-9]{4}"
+            required style="letter-spacing:8px;font-size:20px;">
         </div>
 
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-300">To Account (Receiver)</label>
-          <input class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-400/50 focus:border-violet-400/50 transition-all duration-200" 
-                 name="to_account" placeholder="Enter receiver account number" required>
-        </div>
+        <div class="divider"><span>Recipient Details</span></div>
 
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-300">Transfer Amount (₹)</label>
-          <div class="relative">
-            <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-medium">₹</span>
-            <input class="w-full pl-10 pr-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-400/50 focus:border-violet-400/50 transition-all duration-200" 
-                   type="number" step="0.01" name="amount" placeholder="0.00" min="0" required>
+        <div class="form-group" style="margin-bottom:20px;">
+          <label class="form-label" style="font-size:13px;">To Account *</label>
+          <input type="text" name="to_account" id="to_account_input" class="form-input" placeholder="ACC_RECEIVER_001"
+            required autocomplete="off">
+          <!-- Live receiver name preview -->
+          <div id="receiver-preview"
+            style="display:none;margin-top:8px;padding:10px 14px;background:rgba(124,58,237,0.07);border-radius:8px;border:1px solid rgba(124,58,237,0.2);">
+            <span style="font-size:13px;color:var(--c-muted);">Sending to: </span>
+            <strong id="receiver-name" style="color:var(--c-violet);font-size:14px;"></strong>
+            <span id="receiver-type" style="font-size:12px;color:var(--c-muted);margin-left:6px;"></span>
           </div>
-          <p class="text-xs text-gray-400">Ensure sufficient balance for transfer</p>
+          <div id="receiver-not-found"
+            style="display:none;margin-top:8px;padding:8px 12px;background:rgba(220,38,38,0.07);border-radius:8px;border:1px solid rgba(220,38,38,0.2);">
+            <span style="font-size:13px;color:var(--c-red);"><i class="fas fa-exclamation-circle"></i> Account not
+              found</span>
+          </div>
         </div>
-      </div>
 
-      <div class="pt-4">
-        <button class="w-full bg-gradient-to-r from-violet-400 to-purple-500 hover:from-violet-500 hover:to-purple-600 text-white font-bold py-4 rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-violet-500/25 flex items-center justify-center space-x-2">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
-          </svg>
-          <span>Transfer Funds</span>
+        <div class="form-group" style="padding-top:8px;">
+          <label class="form-label" style="font-size:14px;text-transform:uppercase;letter-spacing:1px;">Transfer Amount
+            *</label>
+          <div class="form-input-prefix">
+            <span class="prefix">₹</span>
+            <input type="number" step="0.01" name="amount" class="form-input" placeholder="0.00" min="0.01" required
+              style="font-size:24px;font-weight:700;color:var(--c-text);background:rgba(124,58,237,0.05);border-color:rgba(124,58,237,0.2);">
+          </div>
+        </div>
+
+        <div
+          style="background:rgba(124,58,237,0.05);border:1px solid rgba(124,58,237,0.2);border-radius:12px;padding:16px;margin-bottom:24px;font-size:14px;color:var(--c-muted);display:flex;align-items:center;gap:12px;margin-top:20px;">
+          <div
+            style="width:32px;height:32px;border-radius:8px;background:rgba(124,58,237,0.1);color:var(--c-violet);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fas fa-hand-sparkles"></i>
+          </div>
+          3-frame palm scan required from sender before transfer.
+        </div>
+
+        <input type="hidden" name="palm_image_1" id="palm_image_1">
+        <input type="hidden" name="palm_image_2" id="palm_image_2">
+        <input type="hidden" name="palm_image_3" id="palm_image_3">
+
+        <div id="camera-container" style="display:none;margin-bottom:24px;text-align:center;">
+          <div
+            style="position:relative;width:100%;max-width:400px;margin:0 auto;border-radius:16px;overflow:hidden;border:2px solid var(--c-violet);box-shadow:0 0 24px rgba(124,58,237,0.25);">
+            <video id="video-preview" autoplay playsinline style="width:100%;display:block;"></video>
+            <div id="palm-guide"
+              style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:180px;height:180px;border-radius:50%;border:3px solid rgba(124,58,237,0.8);animation:palmPulseViolet 1.4s ease-out infinite;pointer-events:none;">
+            </div>
+            <div
+              style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:flex-end;justify-content:center;padding-bottom:16px;">
+              <div
+                style="background:rgba(0,0,0,0.72);color:#fff;font-size:14px;font-weight:600;padding:8px 20px;border-radius:20px;backdrop-filter:blur(8px);">
+                <span id="capture-status">Position your palm in the ring</span>
+              </div>
+            </div>
+            <div style="position:absolute;top:12px;right:12px;display:flex;gap:6px;">
+              <div id="dot-1"
+                style="width:12px;height:12px;border-radius:50%;border:2px solid #fff;background:transparent;transition:background .3s;">
+              </div>
+              <div id="dot-2"
+                style="width:12px;height:12px;border-radius:50%;border:2px solid #fff;background:transparent;transition:background .3s;">
+              </div>
+              <div id="dot-3"
+                style="width:12px;height:12px;border-radius:50%;border:2px solid #fff;background:transparent;transition:background .3s;">
+              </div>
+            </div>
+            <div id="flash-overlay"
+              style="position:absolute;top:0;left:0;right:0;bottom:0;background:white;opacity:0;pointer-events:none;transition:opacity 0.12s;">
+            </div>
+          </div>
+          <canvas id="canvas-capture" style="display:none;"></canvas>
+          <p style="font-size:12px;color:var(--c-muted);margin-top:8px;"><i class="fas fa-info-circle"></i> 3 frames
+            captured for best accuracy</p>
+        </div>
+
+        <div id="processing-overlay"
+          style="display:none;margin-bottom:24px;text-align:center;padding:20px;background:rgba(124,58,237,0.07);border-radius:12px;border:1px solid rgba(124,58,237,0.2);">
+          <div
+            style="width:40px;height:40px;border:3px solid rgba(124,58,237,0.2);border-top-color:var(--c-violet);border-radius:50%;margin:0 auto 12px;animation:spin 0.8s linear infinite;">
+          </div>
+          <p style="color:var(--c-violet);font-weight:600;font-size:14px;">Verifying palm &amp; processing transfer…</p>
+        </div>
+
+        <button type="button" id="start-btn" class="btn btn-full btn-lg"
+          style="background:var(--c-violet);color:#fff;font-weight:700;box-shadow:0 12px 24px rgba(124,58,237,0.3);">
+          <i class="fas fa-exchange-alt"></i> Verify &amp; Transfer
         </button>
-      </div>
-    </form>
+        <button type="submit" id="submit-btn" style="display:none;"></button>
+      </form>
+    </div>
+
+    <div class="card-footer" style="text-align:center;">
+      <a href="{{ url_for('home') }}" style="color:var(--c-muted);text-decoration:none;font-size:13px;">
+        <i class="fas fa-arrow-left fa-xs"></i> Back to Home
+      </a>
+    </div>
   </div>
 </div>
+
+<style>
+  @keyframes palmPulseViolet {
+    0% {
+      box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.5);
+    }
+
+    70% {
+      box-shadow: 0 0 0 20px rgba(124, 58, 237, 0);
+    }
+
+    100% {
+      box-shadow: 0 0 0 0 rgba(124, 58, 237, 0);
+    }
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+</style>
+
+<script>
+  (function () {
+    // ── Live receiver account lookup ──────────────────────────────────────────
+    const toInput = document.getElementById('to_account_input');
+    const recPreview = document.getElementById('receiver-preview');
+    const recName = document.getElementById('receiver-name');
+    const recType = document.getElementById('receiver-type');
+    const recNotFound = document.getElementById('receiver-not-found');
+
+    let lookupTimeout = null;
+    toInput.addEventListener('input', () => {
+      clearTimeout(lookupTimeout);
+      recPreview.style.display = 'none';
+      recNotFound.style.display = 'none';
+      const val = toInput.value.trim();
+      if (val.length < 4) return;
+      lookupTimeout = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/check_account?account_number=${encodeURIComponent(val)}`);
+          const data = await res.json();
+          if (data.found) {
+            recName.textContent = data.name;
+            recType.textContent = `(${data.account_type})`;
+            recPreview.style.display = 'block';
+            recNotFound.style.display = 'none';
+          } else {
+            recPreview.style.display = 'none';
+            recNotFound.style.display = 'block';
+          }
+        } catch (e) { }
+      }, 500);
+    });
+
+    // ── 3-frame palm capture ──────────────────────────────────────────────────
+    const startBtn = document.getElementById('start-btn');
+    const form = document.getElementById('transfer-form');
+    const camContainer = document.getElementById('camera-container');
+    const video = document.getElementById('video-preview');
+    const canvas = document.getElementById('canvas-capture');
+    const statusEl = document.getElementById('capture-status');
+    const flashEl = document.getElementById('flash-overlay');
+    const procOverlay = document.getElementById('processing-overlay');
+    const dots = [document.getElementById('dot-1'),
+    document.getElementById('dot-2'),
+    document.getElementById('dot-3')];
+    let stream = null;
+
+    startBtn.addEventListener('click', async () => {
+      if (!form.checkValidity()) { form.reportValidity(); return; }
+      startBtn.disabled = true;
+      startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Opening Camera...';
+      camContainer.style.display = 'block';
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+        });
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          statusEl.textContent = 'Position your palm in the ring';
+          setTimeout(captureSequence, 2000);
+        };
+      } catch (err) {
+        statusEl.textContent = 'Camera Access Denied';
+        startBtn.disabled = false;
+        startBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Camera Error — Retry';
+      }
+    });
+
+    async function captureSequence() {
+      for (let i = 1; i <= 3; i++) {
+        statusEl.textContent = `Capturing frame ${i} of 3… hold steady`;
+        await delay(600);
+        await captureFrame(i);
+        dots[i - 1].style.background = 'var(--c-violet)';
+        await delay(500);
+      }
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      camContainer.style.display = 'none';
+      procOverlay.style.display = 'block';
+      await delay(400);
+      document.getElementById('submit-btn').click();
+    }
+
+    async function captureFrame(index) {
+      return new Promise(resolve => {
+        flashEl.style.opacity = '0.85';
+        setTimeout(() => {
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          document.getElementById(`palm_image_${index}`).value =
+            canvas.toDataURL('image/jpeg', 0.95);
+          flashEl.style.opacity = '0';
+          resolve();
+        }, 120);
+      });
+    }
+
+    function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+  })();
+</script>
 {% endblock %}

@@ -1,15 +1,29 @@
 
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 import sqlite3
 import cv2
 import base64
 import re
 import numpy as np
-from palm_recognition import get_palm_recognizer
+from palm_recognition import get_palm_recognizer, check_quality
 import threading
 import time
+import logging
+import json
+from stripe_config import (
+    STRIPE_ENABLED, STRIPE_PUBLISHABLE_KEY, STRIPE_CURRENCY,
+    create_payment_intent, verify_payment_intent, construct_webhook_event
+)
+
+# Configure logging for confidence tracking
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(levelname)s  %(message)s",
+)
+auth_logger = logging.getLogger("palm_auth")
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024   # 50 MB — needed for 3 base64 palm frames
 
 DB = "palm_pay.db"
 
@@ -26,7 +40,6 @@ def retrain_model_background():
         retraining_status["in_progress"] = True
         retraining_status["message"] = "Starting model retraining..."
 
-        # Get all palm images from database
         conn = sqlite3.connect(DB)
         c = conn.cursor()
         c.execute("SELECT hand_image FROM users WHERE hand_image IS NOT NULL")
@@ -35,102 +48,87 @@ def retrain_model_background():
 
         total_images = len(rows)
         if total_images < 5:
-            retraining_status["message"] = f"Not enough data for retraining (need at least 5 images, have {total_images})"
+            retraining_status["message"] = (
+                f"Not enough data for retraining "
+                f"(need at least 5, have {total_images})"
+            )
             retraining_status["in_progress"] = False
             return
 
-        retraining_status["message"] = f"Found {total_images} palm images for retraining"
-
-        # Adaptive training parameters based on dataset size for SPEED optimization
+        # Adaptive training parameters
         if total_images <= 10:
-            epochs = 25
-            batch_size = 4
-            augment_factor = 8
+            epochs, batch_size, augment_factor = 25, 4, 8
         elif total_images <= 50:
-            epochs = 20
-            batch_size = 8
-            augment_factor = 6
+            epochs, batch_size, augment_factor = 20, 8, 6
         elif total_images <= 100:
-            epochs = 15
-            batch_size = 12
-            augment_factor = 4
+            epochs, batch_size, augment_factor = 15, 12, 4
         elif total_images <= 500:
-            epochs = 12
-            batch_size = 16
-            augment_factor = 3
-        else:  # 500+ users like 1000 users
-            epochs = 8  # Very fast for large datasets
-            batch_size = 24  # Larger batch size for speed
-            augment_factor = 2  # Less augmentation for speed
+            epochs, batch_size, augment_factor = 12, 16, 3
+        else:
+            epochs, batch_size, augment_factor = 8, 24, 2
 
-        retraining_status["message"] = f"Adaptive training: {epochs} epochs, batch size {batch_size}, {total_images * augment_factor} total samples"
+        retraining_status["message"] = (
+            f"Adaptive training: {epochs} epochs, "
+            f"batch {batch_size}, {total_images * augment_factor} samples"
+        )
 
-        # Create temporary training data
-        import os
-        import tempfile
-        import shutil
+        import os, tempfile, shutil
         from advanced_train_model import create_arcface_model, load_images_with_labels, create_training_data
         from tensorflow import keras
 
-        # Create temporary directory structure
-        temp_dir = tempfile.mkdtemp()
+        temp_dir  = tempfile.mkdtemp()
         train_dir = os.path.join(temp_dir, "Train")
         os.makedirs(train_dir)
 
-        # Save images to temporary files
         for i, (img_blob,) in enumerate(rows):
             try:
                 nparr = np.frombuffer(img_blob, np.uint8)
-                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                img   = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
                 if img is not None:
-                    filename = f"IMG_{i+1:04d}.jpg"
-                    filepath = os.path.join(train_dir, filename)
-                    cv2.imwrite(filepath, img)
+                    cv2.imwrite(os.path.join(train_dir, f"IMG_{i+1:04d}.jpg"), img)
             except Exception as e:
                 print(f"Error saving image {i}: {e}")
-                continue
 
-        retraining_status["message"] = f"Saved {len(os.listdir(train_dir))} images to temporary directory"
+        retraining_status["message"] = (
+            f"Saved {len(os.listdir(train_dir))} images to temp directory"
+        )
 
-        # Temporarily modify the training script paths and parameters
-        import advanced_train_model
-        original_train_dir = advanced_train_model.TRAIN_DIR
-        original_valid_dir = advanced_train_model.VALID_DIR
-        original_model_path = advanced_train_model.MODEL_SAVE_PATH
-        original_epochs = advanced_train_model.EPOCHS
-        original_batch_size = advanced_train_model.BATCH_SIZE
+        import advanced_train_model as atm
+        orig_train = atm.TRAIN_DIR; orig_valid = atm.VALID_DIR
+        orig_model = atm.MODEL_SAVE_PATH
+        orig_ep    = atm.EPOCHS;    orig_bs    = atm.BATCH_SIZE
 
-        advanced_train_model.TRAIN_DIR = train_dir
-        advanced_train_model.VALID_DIR = None  # No validation for retraining
-        advanced_train_model.MODEL_SAVE_PATH = "palm_feature_extractor_advanced.h5"
-        advanced_train_model.EPOCHS = epochs
-        advanced_train_model.BATCH_SIZE = batch_size
+        atm.TRAIN_DIR      = train_dir
+        atm.VALID_DIR      = None
+        atm.MODEL_SAVE_PATH = "palm_feature_extractor_advanced.h5"
+        atm.EPOCHS         = epochs
+        atm.BATCH_SIZE     = batch_size
 
         try:
-            # Temporarily modify augmentation factor for speed
             import types
-            original_create_training_data = advanced_train_model.create_training_data
-            def fast_create_training_data(images, labels, augment_factor=augment_factor):
-                return original_create_training_data(images, labels, augment_factor)
-            advanced_train_model.create_training_data = fast_create_training_data
+            orig_ctd = atm.create_training_data
+            def fast_ctd(imgs, lbls, augment_factor=augment_factor):
+                return orig_ctd(imgs, lbls, augment_factor)
+            atm.create_training_data = fast_ctd
 
-            retraining_status["message"] = f"🚀 Fast training: {epochs} epochs, batch size {batch_size}..."
-            advanced_train_model.train_arcface_model()
-            retraining_status["message"] = f"✅ Model retraining completed successfully! Trained on {total_images} users with {epochs} epochs in record time."
+            retraining_status["message"] = (
+                f"🚀 Fast training: {epochs} epochs, batch {batch_size}..."
+            )
+            atm.train_arcface_model()
+            retraining_status["message"] = (
+                f"✅ Retraining complete! Trained on {total_images} users "
+                f"with {epochs} epochs."
+            )
             retraining_status["last_retrained"] = time.strftime("%Y-%m-%d %H:%M:%S")
-
         except Exception as e:
             retraining_status["message"] = f"Retraining failed: {str(e)}"
         finally:
-            # Restore original parameters
-            advanced_train_model.TRAIN_DIR = original_train_dir
-            advanced_train_model.VALID_DIR = original_valid_dir
-            advanced_train_model.MODEL_SAVE_PATH = original_model_path
-            advanced_train_model.EPOCHS = original_epochs
-            advanced_train_model.BATCH_SIZE = original_batch_size
-            advanced_train_model.create_training_data = original_create_training_data
-
-            # Clean up temporary directory
+            atm.TRAIN_DIR          = orig_train
+            atm.VALID_DIR          = orig_valid
+            atm.MODEL_SAVE_PATH    = orig_model
+            atm.EPOCHS             = orig_ep
+            atm.BATCH_SIZE         = orig_bs
+            atm.create_training_data = orig_ctd
             shutil.rmtree(temp_dir, ignore_errors=True)
 
         retraining_status["in_progress"] = False
@@ -138,6 +136,7 @@ def retrain_model_background():
     except Exception as e:
         retraining_status["message"] = f"Retraining failed: {str(e)}"
         retraining_status["in_progress"] = False
+
 
 def init_db():
     conn = sqlite3.connect(DB)
@@ -156,12 +155,11 @@ def init_db():
             palm_features BLOB
         )
     ''')
-    # Add palm_features column if it doesn't exist (for existing databases)
     try:
         c.execute("ALTER TABLE users ADD COLUMN palm_features BLOB")
     except sqlite3.OperationalError:
-        pass  # Column already exists
-    
+        pass  # Already exists
+
     c.execute('''
         CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -176,196 +174,111 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 def get_user(acc):
     conn = sqlite3.connect(DB)
     c = conn.cursor()
-    c.execute("SELECT id, name, account_number, phone, address, account_type, pin, balance, hand_image, palm_features FROM users WHERE account_number=?", (acc,))
+    c.execute(
+        "SELECT id, name, account_number, phone, address, account_type, "
+        "pin, balance, hand_image, palm_features FROM users WHERE account_number=?",
+        (acc,)
+    )
     row = c.fetchone()
     conn.close()
     return row
 
-def assess_image_quality(frame):
-    """Assess image quality - check brightness, contrast, and blur"""
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    
-    # Check brightness (mean intensity)
-    brightness = np.mean(gray)
-    
-    # Check contrast (standard deviation)
-    contrast = np.std(gray)
-    
-    # Check sharpness using Laplacian variance
-    laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
-    
-    # Return quality metrics
-    quality_score = 0
-    issues = []
-    
-    if brightness < 50:
-        issues.append("too dark")
-        quality_score += 20
-    elif brightness > 200:
-        issues.append("too bright")
-        quality_score += 20
-    else:
-        quality_score += 40
-    
-    if contrast < 20:
-        issues.append("low contrast")
-        quality_score += 10
-    else:
-        quality_score += 30
-    
-    if laplacian_var < 50:
-        issues.append("blurry")
-        quality_score += 10
-    else:
-        quality_score += 30
-    
-    return quality_score, issues, {
-        'brightness': brightness,
-        'contrast': contrast,
-        'sharpness': laplacian_var
-    }
 
-def capture_palm_image():
-    """Capture high-quality palm image from camera with quality checks"""
-    cap = cv2.VideoCapture(0)
-    hand_image = None
-    
-    if not cap.isOpened():
-        print("❌ Error: Could not open camera. Check permissions and connections.")
-        return None
-    
-    # Optimize camera settings for quality
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-    cap.set(cv2.CAP_PROP_FPS, 30)
-    cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)
-    cap.set(cv2.CAP_PROP_FOCUS_MODE, 1)
-    
-    # Warm up camera
-    for _ in range(10):
-        cap.read()
-    
-    time.sleep(1)
-    
-    print("📷 Capturing palm image... Position your palm clearly in front of camera")
-    
-    gui_available = True
-    start_time = time.time()
-    capture_time = 4  # Seconds to wait
-    best_frame = None
-    best_quality = -1
-    frames_evaluated = 0
-    
+def decode_base64_image(b64_string):
+    """Decode a base64 image string into raw JPEG bytes at high quality."""
     try:
-        while time.time() - start_time < capture_time:
-            ret, frame = cap.read()
-            if not ret:
-                print("❌ Error: Could not read frame from camera")
-                break
-            
-            frames_evaluated += 1
-            quality_score, issues, metrics = assess_image_quality(frame)
-            
-            # Keep the best quality frame
-            if quality_score > best_quality:
-                best_quality = quality_score
-                best_frame = frame.copy()
-            
-            # Display frame with quality feedback
-            if gui_available:
-                try:
-                    # Add quality info to frame
-                    display_frame = frame.copy()
-                    status_text = f"Quality: {quality_score}% | Brightness: {metrics['brightness']:.0f} | Contrast: {metrics['contrast']:.0f}"
-                    cv2.putText(display_frame, status_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                    
-                    if issues:
-                        issue_text = "Issues: " + ", ".join(issues)
-                        cv2.putText(display_frame, issue_text, (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-                    
-                    elapsed = time.time() - start_time
-                    remaining = int(capture_time - elapsed)
-                    timer_text = f"Capturing in {remaining}s | Press 's' to save, 'q' to cancel"
-                    cv2.putText(display_frame, timer_text, (10, display_frame.shape[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
-                    
-                    cv2.imshow("PalmPay - Palm Registration", display_frame)
-                    key = cv2.waitKey(100) & 0xFF
-                    
-                    if key == ord('s'):
-                        hand_image = best_frame if best_frame is not None else frame
-                        print(f"✅ Image captured (user pressed 's') - Quality: {best_quality}%")
-                        break
-                    elif key == ord('q'):
-                        print("❌ Capture cancelled by user")
-                        break
-                except Exception as e:
-                    gui_available = False
-            
-            time.sleep(0.05)
-        
-        # If auto-capture triggered, use best frame
-        if hand_image is None and best_frame is not None:
-            hand_image = best_frame
-            print(f"✅ Auto-captured best frame - Quality: {best_quality}% after {frames_evaluated} frames")
-        
-        # Encode the image
-        if hand_image is not None:
-            success, encoded = cv2.imencode('.jpg', hand_image, [cv2.IMWRITE_JPEG_QUALITY, 95])
-            if success:
-                return encoded.tobytes()
-            else:
-                print("❌ Error: Failed to encode image")
-                return None
-    
-    finally:
-        cap.release()
-        try:
-            cv2.destroyAllWindows()
-        except:
-            pass
-    
-    return None
-
-def capture_multiple_palm_images(num_captures=3):
-    """Capture multiple palm images for better feature extraction"""
-    images = []
-    print(f"Capturing {num_captures} palm images for registration...")
-    
-    for i in range(num_captures):
-        print(f"\n--- Capture {i+1}/{num_captures} ---")
-        print("Please position your palm and hold steady...")
-        image = capture_palm_image()
-        if image is not None:
-            images.append(image)
-            print(f"✅ Capture {i+1} successful")
-            if i < num_captures - 1:
-                print("Please adjust your palm position slightly for the next capture...")
-                time.sleep(1)  # Brief pause between captures
-        else:
-            print(f"❌ Capture {i+1} failed")
-    
-    if len(images) == 0:
+        if not b64_string:
+            return None
+        if "," in b64_string:
+            b64_string = b64_string.split(",")[1]
+        img_data = base64.b64decode(b64_string)
+        nparr    = np.frombuffer(img_data, np.uint8)
+        img      = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return None
+        # ← JPEG quality raised from 95 to 98 for maximum detail preservation
+        success, encoded = cv2.imencode(".jpg", img,
+                                         [cv2.IMWRITE_JPEG_QUALITY, 98])
+        return encoded.tobytes() if success else None
+    except Exception as e:
+        print(f"decode_base64_image error: {e}")
         return None
-    elif len(images) < num_captures:
-        print(f"Warning: Only captured {len(images)} out of {num_captures} images")
-    
+
+
+def collect_palm_images(form):
+    """
+    Collect up to 5 palm images from a form submission (palm_image_1..5).
+    Returns a list of decoded image bytes (non-empty).
+    """
+    images = []
+    for i in range(1, 6):   # ← expanded from 3 to 5 frames
+        b64 = form.get(f"palm_image_{i}", "")
+        if b64:
+            img = decode_base64_image(b64)
+            if img is not None:
+                images.append(img)
     return images
 
-def verify_palm_authentication(account_number, new_palm_image):
-    """Verify palm authentication for a user"""
+
+def verify_palm_multi(account_number, palm_images):
+    """
+    Verify palm against stored features using multi-frame ensemble.
+    Returns (is_verified: bool, similarity: float, error_msg: str).
+    Includes confidence logging for security audit trail.
+    """
     user = get_user(account_number)
-    if not user or not user[9]:  # user[9] is palm_features
+    if not user or not user[9]:
+        auth_logger.warning(f"VERIFY FAIL: account={account_number} reason=no_features")
         return False, 0.0, "Palm features not found. Please re-register."
-    
     try:
-        stored_features = user[9]  # palm_features BLOB
-        is_verified, similarity = palm_recognizer.verify_palm(stored_features, new_palm_image)
+        stored_features = user[9]
+
+        # Quality-gate each frame before verification
+        quality_pass = 0
+        quality_fail = 0
+        for img_bytes in palm_images:
+            nparr = np.frombuffer(img_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if img is not None:
+                passed, qinfo = check_quality(img)
+                if passed:
+                    quality_pass += 1
+                else:
+                    quality_fail += 1
+                    auth_logger.info(f"  Quality fail: {qinfo}")
+
+        if quality_pass == 0:
+            auth_logger.warning(f"VERIFY FAIL: account={account_number} "
+                                f"reason=all_frames_low_quality")
+            return False, 0.0, ("All palm images failed quality check. "
+                                "Ensure good lighting and hold palm steady.")
+
+        if len(palm_images) > 1:
+            is_verified, similarity = palm_recognizer.multi_frame_verify(
+                stored_features, palm_images
+            )
+        else:
+            is_verified, similarity = palm_recognizer.verify_palm(
+                stored_features, palm_images[0]
+            )
+
+        # Confidence logging
+        auth_logger.info(
+            f"VERIFY {'PASS' if is_verified else 'FAIL'}: "
+            f"account={account_number}  sim={similarity:.4f}  "
+            f"frames={len(palm_images)}  quality_ok={quality_pass}/{len(palm_images)}  "
+            f"threshold={palm_recognizer.threshold}"
+        )
+
         return is_verified, similarity, ""
     except Exception as e:
+        auth_logger.error(f"VERIFY ERROR: account={account_number} error={e}")
         return False, 0.0, f"Palm verification error: {str(e)}"
+
 
 def authenticate(acc, pin):
     if pin is None:
@@ -378,39 +291,63 @@ def authenticate(acc, pin):
         return False
     return str(u[6]).strip() == pin
 
+
 def set_balance(acc, new_bal):
     conn = sqlite3.connect(DB)
     c = conn.cursor()
-    c.execute("UPDATE users SET balance=? WHERE account_number=?", (new_bal, acc))
+    c.execute("UPDATE users SET balance=? WHERE account_number=?",
+              (new_bal, acc))
     conn.commit()
     conn.close()
+
 
 def add_txn(acc, ttype, amount, balance_after, note=""):
     conn = sqlite3.connect(DB)
     c = conn.cursor()
     c.execute(
-        "INSERT INTO transactions (account_number, type, amount, balance_after, note) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO transactions "
+        "(account_number, type, amount, balance_after, note) VALUES (?,?,?,?,?)",
         (acc, ttype, float(amount), float(balance_after), note)
     )
     conn.commit()
     conn.close()
 
+
 init_db()
+
 
 @app.route("/")
 def home():
     return render_template("home.html")
 
+
+# ── API: real-time account lookup for transfer page ───────────────────────────
+@app.route("/api/check_account")
+def check_account():
+    acc = request.args.get("account_number", "").strip()
+    if not acc:
+        return jsonify({"found": False})
+    user = get_user(acc)
+    if not user:
+        return jsonify({"found": False})
+    return jsonify({
+        "found":        True,
+        "name":         user[1],
+        "account_type": user[5] or "Standard",
+    })
+
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "GET":
         return render_template("register.html", message=None)
-    name = request.form.get("name","").strip()
-    account_number = request.form.get("account_number","").strip()
-    phone = request.form.get("phone","").strip()
-    address = request.form.get("address","").strip()
-    account_type = request.form.get("account_type","").strip()
-    pin = str(request.form.get("pin","")).strip()
+
+    name           = request.form.get("name", "").strip()
+    account_number = request.form.get("account_number", "").strip()
+    phone          = request.form.get("phone", "").strip()
+    address        = request.form.get("address", "").strip()
+    account_type   = request.form.get("account_type", "").strip()
+    pin            = str(request.form.get("pin", "")).strip()
 
     errors = []
     if not name or not account_number or not pin:
@@ -420,77 +357,132 @@ def register():
     if errors:
         return render_template("register.html", message=" ".join(errors))
 
-    # Capture multiple palm images for better accuracy
-    hand_images = capture_multiple_palm_images(num_captures=3)
+    # Collect up to 3 palm images for registration
+    hand_images = collect_palm_images(request.form)
 
-    if hand_images is None or len(hand_images) == 0:
-        error_msg = "❌ No palm images captured. Troubleshooting: 1) Check camera permissions (System Preferences → Security & Privacy → Camera), 2) Ensure camera is not in use by another app, 3) Verify camera is connected and working."
-        return render_template("register.html", message=error_msg)
+    if not hand_images:
+        return render_template("register.html",
+            message="❌ No palm images captured. Please allow camera access "
+                    "and keep your hand steady during registration.")
 
-    # Extract palm features from all images and average them
+    # Quality gate — reject frames that fail quality check
+    quality_results = []
+    good_images = []
+    for img_bytes in hand_images:
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is not None:
+            passed, qinfo = check_quality(img)
+            quality_results.append(qinfo)
+            if passed:
+                good_images.append(img_bytes)
+            else:
+                print(f"  ⚠ Registration frame rejected: {qinfo}")
+
+    if len(good_images) < 2:
+        failed_info = ", ".join(
+            f"frame {i+1}: sharp={q['sharpness']:.0f} bright={q['brightness']:.0f}"
+            for i, q in enumerate(quality_results)
+        )
+        return render_template("register.html",
+            message=(f"❌ Too few quality frames ({len(good_images)}/{len(hand_images)} passed). "
+                     f"Details: {failed_info}. "
+                     f"Ensure good lighting, hold palm steady and flat."))
+
     try:
-        # Use batch extraction for efficiency
-        feature_list = palm_recognizer.extract_features_batch(hand_images, fast_mode=False)
-        
-        # Average the features for more robust representation
+        feature_list  = palm_recognizer.extract_features_batch(
+            good_images, fast_mode=False)
         palm_features = np.mean(feature_list, axis=0)
-        # Re-normalize after averaging
         palm_features = palm_features / np.linalg.norm(palm_features)
-        palm_features_bytes = palm_features.tobytes()
-        
-        # Store the first image as representative
-        hand_image = hand_images[0]
-        
+        palm_feats_b  = palm_features.tobytes()
+        hand_image    = good_images[0]
     except Exception as e:
-        return render_template("register.html", message=f"Error extracting palm features: {str(e)}")
+        return render_template("register.html",
+            message=f"Error extracting palm features: {str(e)}")
 
+    # Cross-user duplicate check — prevent same palm under different accounts
     try:
         conn = sqlite3.connect(DB)
         c = conn.cursor()
+        c.execute("SELECT account_number, palm_features FROM users WHERE palm_features IS NOT NULL")
+        existing_users = c.fetchall()
+        conn.close()
+
+        existing_features = [(row[0], row[1]) for row in existing_users if row[1]]
+        for existing_acc, existing_feat in existing_features:
+            sim = palm_recognizer.compare_features(
+                palm_features,
+                np.frombuffer(existing_feat, dtype=np.float32)
+            )
+            if sim >= 0.75:  # Cross-user threshold
+                auth_logger.warning(
+                    f"REGISTER BLOCKED: new_acc={account_number} "
+                    f"matches existing_acc={existing_acc} sim={sim:.4f}"
+                )
+                return render_template("register.html",
+                    message=(f"❌ This palm is too similar to an existing account "
+                             f"(similarity: {sim:.1%}). Each palm can only be "
+                             f"registered once. If this is an error, contact support."))
+    except Exception as e:
+        print(f"Cross-user check warning: {e}")
+
+    try:
+        conn = sqlite3.connect(DB)
+        c    = conn.cursor()
         c.execute(
-            "INSERT INTO users (name, account_number, phone, address, account_type, pin, hand_image, palm_features, balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)",
-            (name, account_number, phone, address, account_type, pin, hand_image, palm_features_bytes)
+            "INSERT INTO users "
+            "(name, account_number, phone, address, account_type, pin, "
+            "hand_image, palm_features, balance) VALUES (?,?,?,?,?,?,?,?,0)",
+            (name, account_number, phone, address, account_type, pin,
+             hand_image, palm_feats_b)
         )
         conn.commit()
-        
-        # Check total users for auto-retraining
+
         c.execute("SELECT COUNT(*) FROM users WHERE hand_image IS NOT NULL")
         total_users = c.fetchone()[0]
         conn.close()
-        
-        # Auto-retrain if we have enough users and retraining is not already in progress
+
+        auth_logger.info(
+            f"REGISTER OK: account={account_number} name={name} "
+            f"frames={len(good_images)}/{len(hand_images)} quality_filtered"
+        )
+
+        # Auto-retrain if enough data and not already running
+        should_retrain = False
         if total_users >= 5 and not retraining_status["in_progress"]:
-            # Check if we haven't retrained recently (not in last hour)
             should_retrain = True
             if retraining_status["last_retrained"]:
                 from datetime import datetime
-                last_retrain_time = datetime.strptime(retraining_status["last_retrained"], "%Y-%m-%d %H:%M:%S")
-                time_since_retrain = datetime.now() - last_retrain_time
-                if time_since_retrain.total_seconds() < 3600:  # 1 hour
+                last = datetime.strptime(
+                    retraining_status["last_retrained"], "%Y-%m-%d %H:%M:%S")
+                if (datetime.now() - last).total_seconds() < 3600:
                     should_retrain = False
-            
-            if should_retrain:
-                # Start automatic retraining in background
-                thread = threading.Thread(target=retrain_model_background)
-                thread.daemon = True
-                thread.start()
-                success_message = f"Registration successful! {len(hand_images)} palm images captured and features averaged for enhanced accuracy. Model is being automatically retrained in the background."
-            else:
-                success_message = f"Registration successful! {len(hand_images)} palm images captured and features averaged for enhanced accuracy."
+
+        if should_retrain:
+            t = threading.Thread(target=retrain_model_background)
+            t.daemon = True
+            t.start()
+            msg = (f"✅ Registration successful! {len(good_images)} high-quality palm "
+                   f"frames captured (out of {len(hand_images)} total). "
+                   f"Background model retrain started.")
         else:
-            success_message = "Registration successful! Palm features extracted and stored."
-        
-        return render_template("register.html", message=success_message)
-        
+            msg = (f"✅ Registration successful! {len(good_images)} high-quality palm "
+                   f"frames captured and features extracted.")
+
+        return render_template("register.html", message=msg)
+
     except sqlite3.IntegrityError:
-        return render_template("register.html", message="Account number already exists. Try a different one.")
+        return render_template("register.html",
+            message="Account number already exists. Try a different one.")
+
 
 @app.route("/users")
 def users():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
-    c.execute("SELECT id, name, account_number, balance, hand_image FROM users ORDER BY id DESC")
-    rows = c.fetchall()
+    c.execute("SELECT id, name, account_number, balance, hand_image "
+              "FROM users ORDER BY id DESC")
+    rows = conn.cursor().fetchall() if False else c.fetchall()
     conn.close()
     processed = []
     for r in rows:
@@ -498,210 +490,397 @@ def users():
         processed.append((r[0], r[1], r[2], r[3], img_b64))
     return render_template("users.html", users=processed)
 
+
 @app.route("/retrain", methods=["GET", "POST"])
 def retrain():
     global retraining_status
     if request.method == "GET":
         return render_template("retrain.html", status=retraining_status)
-    
     if retraining_status["in_progress"]:
-        return render_template("retrain.html", status=retraining_status, message="Retraining already in progress")
-    
-    # Start retraining in background thread
-    thread = threading.Thread(target=retrain_model_background)
-    thread.daemon = True
-    thread.start()
-    
-    return render_template("retrain.html", status=retraining_status, message="Retraining started in background")
+        return render_template("retrain.html", status=retraining_status,
+                               message="Retraining already in progress")
+    t = threading.Thread(target=retrain_model_background)
+    t.daemon = True
+    t.start()
+    return render_template("retrain.html", status=retraining_status,
+                           message="Retraining started in background")
 
+
+# ── Deposit ───────────────────────────────────────────────────────────────────
 @app.route("/deposit", methods=["GET", "POST"])
 def deposit():
+    ctx = {"stripe_enabled": STRIPE_ENABLED, "stripe_pk": STRIPE_PUBLISHABLE_KEY}
+
     if request.method == "GET":
-        return render_template("deposit.html", message=None)
-    acc = request.form.get("account_number","").strip()
-    pin = request.form.get("pin","").strip()
-    amt = request.form.get("amount","0").strip()
+        return render_template("deposit.html", message=None, **ctx)
+
+    acc = request.form.get("account_number", "").strip()
+    pin = request.form.get("pin", "").strip()
+    amt = request.form.get("amount", "0").strip()
 
     try:
         user = get_user(acc)
         if not user:
-            return render_template("deposit.html", message="❌ Account not found. Please register first.")
+            return render_template("deposit.html",
+                message="❌ Account not found. Please register first.", **ctx)
 
         if not authenticate(acc, pin):
-            return render_template("deposit.html", message="❌ Invalid PIN. Please try again.")
+            return render_template("deposit.html",
+                message="❌ Invalid PIN. Please try again.", **ctx)
 
-        # Palm authentication for UPI transaction
-        print("📷 Please position your palm for verification...")
-        palm_image = capture_palm_image()
-        if palm_image is None:
-            return render_template("deposit.html", message="❌ Palm image not captured. Please try again.")
-        
-        is_verified, similarity, error_msg = verify_palm_authentication(acc, palm_image)
+        palm_images = collect_palm_images(request.form)
+        if not palm_images:
+            return render_template("deposit.html",
+                message="❌ Palm image not captured. Allow camera access and try again.", **ctx)
+
+        is_verified, similarity, error_msg = verify_palm_multi(acc, palm_images)
         if not is_verified:
-            return render_template("deposit.html", message=f"❌ Palm authentication failed (similarity: {similarity:.1%}). {error_msg}")
+            tip = ("Tip: ensure good lighting and hold your palm flat and "
+                   "steady in front of the camera.")
+            return render_template("deposit.html",
+                message=(f"❌ Palm authentication failed "
+                         f"(similarity: {similarity:.1%}). {tip}"), **ctx)
 
         try:
             amount = float(amt)
             if amount <= 0:
-                return render_template("deposit.html", message="❌ Amount must be greater than 0.")
+                return render_template("deposit.html",
+                    message="❌ Amount must be greater than ₹0.", **ctx)
         except ValueError:
-            return render_template("deposit.html", message="❌ Invalid amount format.")
+            return render_template("deposit.html",
+                message="❌ Invalid amount format.", **ctx)
 
+        # ── Stripe-enabled flow: create PaymentIntent, show card form ─────
+        if STRIPE_ENABLED:
+            result = create_payment_intent(
+                amount, acc,
+                description=f"PalmPay deposit — {user[1]} ({acc})"
+            )
+            if "error" in result:
+                return render_template("deposit.html",
+                    message=f"❌ Payment error: {result['error']}", **ctx)
+
+            auth_logger.info(
+                f"STRIPE INTENT: account={acc} amount={amount} "
+                f"pi={result['payment_intent_id']}"
+            )
+
+            return render_template("deposit.html",
+                message=None,
+                show_stripe_form=True,
+                client_secret=result["client_secret"],
+                payment_intent_id=result["payment_intent_id"],
+                deposit_amount=amount,
+                deposit_account=acc,
+                palm_verified=True,
+                palm_similarity=f"{similarity:.1%}",
+                **ctx)
+
+        # ── Non-Stripe fallback: direct balance credit ────────────────────
         new_balance = float(user[7]) + amount
         set_balance(acc, new_balance)
-        add_txn(acc, "deposit", amount, new_balance, "Cash deposit - Palm verified")
-        return render_template("deposit.html", message=f"✅ Deposit successful! Palm verified (match: {similarity:.1%}). New balance: ₹{new_balance:.2f}")
-    
+        add_txn(acc, "deposit", amount, new_balance,
+                f"Cash deposit — Palm verified ({len(palm_images)} frames)")
+        return render_template("deposit.html",
+            message=(f"✅ Deposit successful! Palm verified "
+                     f"(match: {similarity:.1%}, {len(palm_images)} frames). "
+                     f"New balance: ₹{new_balance:,.2f}"), **ctx)
+
     except Exception as e:
-        print(f"Error in deposit: {e}")
-        return render_template("deposit.html", message=f"❌ Error processing deposit: {str(e)}")
+        print(f"deposit error: {e}")
+        return render_template("deposit.html",
+            message=f"❌ Error processing deposit: {str(e)}", **ctx)
 
 
+# ── Withdraw ──────────────────────────────────────────────────────────────────
 @app.route("/withdraw", methods=["GET", "POST"])
 def withdraw():
     if request.method == "GET":
         return render_template("withdraw.html", message=None)
-    acc = request.form.get("account_number","").strip()
-    pin = request.form.get("pin","").strip()
-    amt = request.form.get("amount","0").strip()
+
+    acc = request.form.get("account_number", "").strip()
+    pin = request.form.get("pin", "").strip()
+    amt = request.form.get("amount", "0").strip()
 
     try:
         user = get_user(acc)
         if not user:
-            return render_template("withdraw.html", message="❌ Account not found. Please register first.")
+            return render_template("withdraw.html",
+                message="❌ Account not found. Please register first.")
 
         if not authenticate(acc, pin):
-            return render_template("withdraw.html", message="❌ Invalid PIN. Please try again.")
+            return render_template("withdraw.html",
+                message="❌ Invalid PIN. Please try again.")
 
-        # Palm authentication for UPI transaction
-        print("📷 Please position your palm for verification...")
-        palm_image = capture_palm_image()
-        if palm_image is None:
-            return render_template("withdraw.html", message="❌ Palm image not captured. Please try again.")
-        
-        is_verified, similarity, error_msg = verify_palm_authentication(acc, palm_image)
+        palm_images = collect_palm_images(request.form)
+        if not palm_images:
+            return render_template("withdraw.html",
+                message="❌ Palm image not captured. Allow camera access and try again.")
+
+        is_verified, similarity, error_msg = verify_palm_multi(acc, palm_images)
         if not is_verified:
-            return render_template("withdraw.html", message=f"❌ Palm authentication failed (similarity: {similarity:.1%}). {error_msg}")
+            tip = ("Tip: ensure good lighting and hold your palm flat and "
+                   "steady in front of the camera.")
+            return render_template("withdraw.html",
+                message=(f"❌ Palm authentication failed "
+                         f"(similarity: {similarity:.1%}). {tip}"))
 
         try:
             amount = float(amt)
             if amount <= 0:
-                return render_template("withdraw.html", message="❌ Amount must be greater than 0.")
+                return render_template("withdraw.html",
+                    message="❌ Amount must be greater than ₹0.")
             if amount > float(user[7]):
-                return render_template("withdraw.html", message=f"❌ Insufficient funds. Available balance: ₹{user[7]:.2f}")
+                return render_template("withdraw.html",
+                    message=f"❌ Insufficient funds. Available: ₹{user[7]:,.2f}")
         except ValueError:
-            return render_template("withdraw.html", message="❌ Invalid amount format.")
+            return render_template("withdraw.html",
+                message="❌ Invalid amount format.")
 
         new_balance = float(user[7]) - amount
         set_balance(acc, new_balance)
-        add_txn(acc, "withdraw", amount, new_balance, "Cash withdrawal - Palm verified")
-        return render_template("withdraw.html", message=f"✅ Withdrawal successful! Palm verified (match: {similarity:.1%}). New balance: ₹{new_balance:.2f}")
-    
+        add_txn(acc, "withdraw", amount, new_balance,
+                f"Cash withdrawal — Palm verified ({len(palm_images)} frames)")
+        return render_template("withdraw.html",
+            message=(f"✅ Withdrawal successful! Palm verified "
+                     f"(match: {similarity:.1%}, {len(palm_images)} frames). "
+                     f"New balance: ₹{new_balance:,.2f}"))
+
     except Exception as e:
-        print(f"Error in withdraw: {e}")
-        return render_template("withdraw.html", message=f"❌ Error processing withdrawal: {str(e)}")
+        print(f"withdraw error: {e}")
+        return render_template("withdraw.html",
+            message=f"❌ Error processing withdrawal: {str(e)}")
 
-        if amount <= 0:
-            return render_template("withdraw.html", message="Amount must be greater than 0.")
-    except ValueError:
-        return render_template("withdraw.html", message="Invalid amount.")
 
-    if float(user[7]) < amount:
-        return render_template("withdraw.html", message="Insufficient balance.")
-    new_balance = float(user[7]) - amount
-    set_balance(acc, new_balance)
-    add_txn(acc, "withdraw", amount, new_balance, "Cash withdrawal - Palm verified")
-    return render_template("withdraw.html", message=f"Withdrawal successful! Palm verified (similarity: {similarity:.2%}). New balance: {new_balance:.2f}")
-
+# ── Transfer ──────────────────────────────────────────────────────────────────
 @app.route("/transfer", methods=["GET", "POST"])
 def transfer():
     if request.method == "GET":
         return render_template("transfer.html", message=None)
-    from_acc = request.form.get("from_account","").strip()
-    pin = request.form.get("pin","").strip()
-    to_acc = request.form.get("to_account","").strip()
-    amt = request.form.get("amount","0").strip()
 
-    sender = get_user(from_acc)
+    from_acc = request.form.get("from_account", "").strip()
+    pin      = request.form.get("pin", "").strip()
+    to_acc   = request.form.get("to_account", "").strip()
+    amt      = request.form.get("amount", "0").strip()
+
+    sender   = get_user(from_acc)
     receiver = get_user(to_acc)
     if not sender:
-        return render_template("transfer.html", message="Sender account not found.")
+        return render_template("transfer.html",
+            message="❌ Sender account not found.")
     if not receiver:
-        return render_template("transfer.html", message="Receiver account not found.")
+        return render_template("transfer.html",
+            message="❌ Receiver account not found.")
     if not authenticate(from_acc, pin):
-        return render_template("transfer.html", message="Invalid PIN.")
+        return render_template("transfer.html",
+            message="❌ Invalid PIN.")
 
-    # Palm authentication for UPI transaction (sender only)
-    print("Please position your palm for verification...")
-    palm_image = capture_palm_image()
-    if palm_image is None:
-        return render_template("transfer.html", message="Palm image not captured. Please try again.")
-    
-    is_verified, similarity, error_msg = verify_palm_authentication(from_acc, palm_image)
+    palm_images = collect_palm_images(request.form)
+    if not palm_images:
+        return render_template("transfer.html",
+            message="❌ Palm not captured. Allow camera access and try again.")
+
+    is_verified, similarity, error_msg = verify_palm_multi(from_acc, palm_images)
     if not is_verified:
-        return render_template("transfer.html", message=f"Palm authentication failed. Similarity: {similarity:.2%}. {error_msg} Please ensure you're using the same palm registered during signup.")
+        tip = ("Tip: ensure good lighting and hold your palm flat and steady. "
+               "Use the same palm you registered with.")
+        return render_template("transfer.html",
+            message=(f"❌ Palm authentication failed "
+                     f"(similarity: {similarity:.1%}). {tip}"))
 
     try:
         amount = float(amt)
         if amount <= 0:
-            return render_template("transfer.html", message="Amount must be greater than 0.")
+            return render_template("transfer.html",
+                message="❌ Amount must be greater than ₹0.")
     except ValueError:
-        return render_template("transfer.html", message="Invalid amount.")
+        return render_template("transfer.html",
+            message="❌ Invalid amount.")
 
     if float(sender[7]) < amount:
-        return render_template("transfer.html", message="Insufficient balance in sender account.")
+        return render_template("transfer.html",
+            message=f"❌ Insufficient balance. Available: ₹{sender[7]:,.2f}")
 
-    new_sender_bal = float(sender[7]) - amount
-    set_balance(from_acc, new_sender_bal)
-    add_txn(from_acc, "transfer_out", amount, new_sender_bal, f"To {to_acc} - Palm verified")
-
+    new_sender_bal   = float(sender[7])   - amount
     new_receiver_bal = float(receiver[7]) + amount
-    set_balance(to_acc, new_receiver_bal)
-    add_txn(to_acc, "transfer_in", amount, new_receiver_bal, f"From {from_acc}")
+    set_balance(from_acc, new_sender_bal)
+    set_balance(to_acc,   new_receiver_bal)
+    add_txn(from_acc, "transfer_out", amount, new_sender_bal,
+            f"To {to_acc} — Palm verified ({len(palm_images)} frames)")
+    add_txn(to_acc, "transfer_in", amount, new_receiver_bal,
+            f"From {from_acc} — Palm verified")
 
-    return render_template("transfer.html", message=f"Transfer successful! Palm verified (similarity: {similarity:.2%}). Transferred {amount:.2f} from {from_acc} to {to_acc}. Sender new balance: {new_sender_bal:.2f}")
+    return render_template("transfer.html",
+        message=(f"✅ Transfer successful! Palm verified "
+                 f"(match: {similarity:.1%}, {len(palm_images)} frames). "
+                 f"₹{amount:,.2f} sent to {receiver[1]} ({to_acc}). "
+                 f"Your new balance: ₹{new_sender_bal:,.2f}"))
 
+
+# ── Balance ───────────────────────────────────────────────────────────────────
 @app.route("/balance", methods=["GET", "POST"])
 def balance():
     if request.method == "GET":
         return render_template("balance.html", message=None)
-    acc = request.form.get("account_number","").strip()
-    pin = request.form.get("pin","").strip()
 
+    acc = request.form.get("account_number", "").strip()
+    pin = request.form.get("pin", "").strip()
     user = get_user(acc)
     if not user:
-        return render_template("balance.html", message="Account not found. Please register first.")
+        return render_template("balance.html",
+            message="Account not found. Please register first.")
     if not authenticate(acc, pin):
         return render_template("balance.html", message="Invalid PIN.")
+    return render_template("balance.html",
+        message=f"Your current balance is: ₹{float(user[7]):,.2f}")
 
-    return render_template("balance.html", message=f"Your current balance is: {float(user[7]):.2f}")
 
+# ── History ───────────────────────────────────────────────────────────────────
 @app.route("/history", methods=["GET", "POST"])
 def history():
     if request.method == "GET":
         return render_template("history.html", message=None, txns=[])
-    acc = request.form.get("account_number","").strip()
-    pin = request.form.get("pin","").strip()
 
+    acc = request.form.get("account_number", "").strip()
+    pin = request.form.get("pin", "").strip()
     user = get_user(acc)
     if not user:
-        return render_template("history.html", message="Account not found.", txns=[])
+        return render_template("history.html",
+            message="Account not found.", txns=[])
     if not authenticate(acc, pin):
-        return render_template("history.html", message="Invalid PIN.", txns=[])
+        return render_template("history.html",
+            message="Invalid PIN.", txns=[])
 
     conn = sqlite3.connect(DB)
     c = conn.cursor()
-    c.execute('''
-        SELECT type, amount, balance_after, note, created_at
-        FROM transactions
-        WHERE account_number=?
-        ORDER BY id DESC
-        LIMIT 100
-    ''', (acc,))
+    c.execute(
+        "SELECT type, amount, balance_after, note, created_at "
+        "FROM transactions WHERE account_number=? "
+        "ORDER BY id DESC LIMIT 100",
+        (acc,)
+    )
     rows = c.fetchall()
     conn.close()
-    return render_template("history.html", message=f"Showing last {len(rows)} transactions for {acc}.", txns=rows)
+    return render_template("history.html",
+        message=f"Showing last {len(rows)} transactions for {acc}.",
+        txns=rows)
+
+
+
+# ── Stripe: Confirm Deposit API ─────────────────────────────────────────────
+@app.route("/api/stripe/confirm-deposit", methods=["POST"])
+def stripe_confirm_deposit():
+    """
+    Called by frontend after Stripe.confirmCardPayment() succeeds.
+    Verifies the PaymentIntent on server side, then credits balance.
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"success": False, "error": "No data received"}), 400
+
+    pi_id   = data.get("payment_intent_id", "")
+    acc     = data.get("account_number", "")
+    amount  = data.get("amount", 0)
+
+    if not pi_id or not acc:
+        return jsonify({"success": False, "error": "Missing payment_intent_id or account"}), 400
+
+    # Verify on Stripe's side
+    succeeded, info = verify_payment_intent(pi_id)
+    if not succeeded:
+        auth_logger.warning(f"STRIPE VERIFY FAIL: pi={pi_id} account={acc} info={info}")
+        return jsonify({"success": False,
+                        "error": f"Payment not confirmed: {info.get('status', 'unknown')}"}), 400
+
+    # Get user and credit balance
+    user = get_user(acc)
+    if not user:
+        return jsonify({"success": False, "error": "Account not found"}), 404
+
+    try:
+        amount = float(amount)
+        new_balance = float(user[7]) + amount
+        set_balance(acc, new_balance)
+        add_txn(acc, "deposit", amount, new_balance,
+                f"Stripe deposit — PI: {pi_id[:20]}...")
+
+        auth_logger.info(
+            f"STRIPE DEPOSIT OK: account={acc} amount={amount} "
+            f"pi={pi_id} new_balance={new_balance}"
+        )
+
+        return jsonify({
+            "success": True,
+            "new_balance": new_balance,
+            "payment_intent_id": pi_id,
+            "message": f"✅ ₹{amount:,.2f} deposited via Stripe. New balance: ₹{new_balance:,.2f}"
+        })
+    except Exception as e:
+        auth_logger.error(f"STRIPE DEPOSIT ERROR: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── Stripe: Webhook ───────────────────────────────────────────────────────
+@app.route("/api/stripe/webhook", methods=["POST"])
+def stripe_webhook():
+    """
+    Stripe webhook endpoint for backup payment confirmation.
+    Handles payment_intent.succeeded events.
+    """
+    payload = request.get_data(as_text=True)
+    sig_header = request.headers.get("Stripe-Signature", "")
+
+    event, error = construct_webhook_event(payload, sig_header)
+    if error:
+        auth_logger.warning(f"STRIPE WEBHOOK ERROR: {error}")
+        return jsonify({"error": error}), 400
+
+    if event["type"] == "payment_intent.succeeded":
+        intent = event["data"]["object"]
+        acc = intent.get("metadata", {}).get("account_number", "")
+        amount_paise = intent.get("amount", 0)
+        amount_rupees = amount_paise / 100.0
+
+        auth_logger.info(
+            f"STRIPE WEBHOOK: payment_intent.succeeded "
+            f"pi={intent['id']} account={acc} amount={amount_rupees}"
+        )
+
+    return jsonify({"received": True})
+
+
+# ── Payments page ─────────────────────────────────────────────────────────
+@app.route("/payments", methods=["GET", "POST"])
+def payments():
+    if request.method == "GET":
+        return render_template("payments.html", message=None, txns=[],
+                               stripe_enabled=STRIPE_ENABLED)
+
+    acc = request.form.get("account_number", "").strip()
+    pin = request.form.get("pin", "").strip()
+    user = get_user(acc)
+    if not user:
+        return render_template("payments.html",
+            message="Account not found.", txns=[], stripe_enabled=STRIPE_ENABLED)
+    if not authenticate(acc, pin):
+        return render_template("payments.html",
+            message="Invalid PIN.", txns=[], stripe_enabled=STRIPE_ENABLED)
+
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute(
+        "SELECT type, amount, balance_after, note, created_at "
+        "FROM transactions WHERE account_number=? AND note LIKE '%Stripe%' "
+        "ORDER BY id DESC LIMIT 50",
+        (acc,)
+    )
+    rows = c.fetchall()
+    conn.close()
+    return render_template("payments.html",
+        message=f"Showing {len(rows)} Stripe transactions for {acc}.",
+        txns=rows, stripe_enabled=STRIPE_ENABLED)
+
 
 if __name__ == "__main__":
-    # Use port 5001 to avoid conflict with macOS AirPlay Receiver on port 5000
-    app.run(debug=True, port=5001, host='0.0.0.0')
+    app.run(debug=True, port=5001, host="0.0.0.0")
+
