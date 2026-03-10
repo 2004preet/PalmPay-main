@@ -23,7 +23,15 @@ palm_pay.db
 # Model files (large files - optionally exclude)
 # Uncomment if you don't want to upload trained models
 palm_feature_extractor.h5
-*.h5
+palm_feature_extractor_advanced.h5
+palm_feature_extractor_professional.h5
+palm_feature_extractor_v5_pro.h5
+# Keep the new trained model (22MB - under GitHub limit)
+!palm_model_v7.h5
+
+# Training data (too large for GitHub)
+Files/Train/
+Files/Valid/
 
 # Logs
 *.log

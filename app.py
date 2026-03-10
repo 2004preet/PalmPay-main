@@ -5,7 +5,6 @@ import cv2
 import base64
 import re
 import numpy as np
-from advanced_train_model import PalmVerifier, assess_capture_quality
 import threading
 import time
 import logging
@@ -14,6 +13,23 @@ from stripe_config import (
     STRIPE_ENABLED, STRIPE_PUBLISHABLE_KEY, STRIPE_CURRENCY,
     create_payment_intent, verify_payment_intent, construct_webhook_event
 )
+
+# ── Palm recognizer — uses trained v7 model (preferred), falls back to legacy
+try:
+    from train_palm_pro import PalmRecognizerPro
+    HAS_PRO = True
+except ImportError:
+    HAS_PRO = False
+
+try:
+    from advanced_train_model import PalmVerifier, assess_capture_quality
+    HAS_LEGACY = True
+except ImportError:
+    HAS_LEGACY = False
+
+    # Stub quality check
+    def assess_capture_quality(img_bgr):
+        return True, {"sharpness": 100, "brightness": 128, "contrast": 50, "issues": []}
 
 # Configure logging for confidence tracking
 logging.basicConfig(
@@ -27,35 +43,30 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024   # 50 MB — needed for 3 b
 
 DB = "palm_pay.db"
 
-# Initialize palm recognizer
-class MockPalmVerifier:
-    def __init__(self):
-        self.verifier = None
-    
-    @property
-    def threshold(self):
-        return 0.82
-        
-    def _ensure_loaded(self):
-        if self.verifier is None:
-            import os
-            if os.path.exists("palm_feature_extractor_v5_pro.h5"):
-                try:
-                    self.verifier = PalmVerifier("palm_feature_extractor_v5_pro.h5", threshold=0.82)
-                except Exception as e:
-                    print("Model load error:", e)
-    
-    def enroll(self, img_bgr):
-        self._ensure_loaded()
-        if self.verifier: return self.verifier.enroll(img_bgr)
-        return np.zeros(512, dtype=np.float32)
+# ── Initialize palm recognizer (v7 trained model > legacy fallback)
+def _init_recognizer():
+    import os
+    # Prefer the new trained model
+    if HAS_PRO and os.path.exists("palm_model_v7.h5"):
+        print("✓ Using PalmRecognizerPro (trained v7 model)")
+        return PalmRecognizerPro("palm_model_v7.h5", threshold=0.75)
+    # Fallback to legacy
+    if HAS_LEGACY and os.path.exists("palm_feature_extractor_v5_pro.h5"):
+        print("⚠ Falling back to legacy PalmVerifier")
+        try:
+            v = PalmVerifier("palm_feature_extractor_v5_pro.h5", threshold=0.82)
+            return v
+        except Exception as e:
+            print(f"  Legacy load failed: {e}")
+    # Stub
+    print("⚠ No model available — palm features will be zeros")
+    class StubRecognizer:
+        threshold = 0.75
+        def enroll(self, img): return np.zeros(256, dtype=np.float32)
+        def verify(self, img, emb): return False, 0.0
+    return StubRecognizer()
 
-    def verify(self, probe_bgr, enrolled_emb):
-        self._ensure_loaded()
-        if self.verifier: return self.verifier.verify(probe_bgr, enrolled_emb)
-        return False, 0.0
-
-palm_recognizer = MockPalmVerifier()
+palm_recognizer = _init_recognizer()
 
 # Global variable to track retraining status
 retraining_status = {"in_progress": False, "last_retrained": None, "message": ""}
