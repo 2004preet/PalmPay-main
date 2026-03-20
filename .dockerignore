@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.DS_Store
+*.md
+test_*.py
+training_log_*.txt
+train_log_*.txt
+logs_professional/
+Files/
